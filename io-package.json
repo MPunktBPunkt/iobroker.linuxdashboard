@@ -1,11 +1,19 @@
 {
   "common": {
     "name": "linuxdashboard",
-    "version": "0.1.0",
+    "version": "0.3.0",
     "news": {
+      "0.3.0": {
+        "en": "Service manager, package manager, cron editor, file editor, process kill, disk analyzer, backup manager",
+        "de": "Service Manager, Package Manager, Cron-Editor, Datei-Editor, Prozess-Kill, Disk-Analyzer, Backup-Manager"
+      },
+      "0.2.0": {
+        "en": "File upload via drag & drop",
+        "de": "Datei-Upload per Drag & Drop"
+      },
       "0.1.0": {
-        "en": "Initial release – System dashboard, file manager, log viewer, terminal",
-        "de": "Erstveröffentlichung – System-Dashboard, Dateimanager, Log-Viewer, Terminal"
+        "en": "Initial release",
+        "de": "Erstveröffentlichung"
       }
     },
     "title": "Linux Dashboard",
@@ -17,8 +25,17 @@
       "en": "Linux system dashboard with file manager, log viewer and command terminal for ioBroker servers",
       "de": "Linux System-Dashboard mit Dateimanager, Log-Viewer und Kommando-Terminal für ioBroker-Server"
     },
-    "authors": ["MPunktBPunkt"],
-    "keywords": ["linux", "dashboard", "system", "filemanager", "terminal", "monitor"],
+    "authors": [
+      "MPunktBPunkt"
+    ],
+    "keywords": [
+      "linux",
+      "dashboard",
+      "system",
+      "filemanager",
+      "terminal",
+      "monitor"
+    ],
     "license": "MIT",
     "platform": "Javascript/Node.js",
     "main": "main.js",
@@ -51,14 +68,17 @@
     "metricsInterval": 5,
     "filemanagerRoot": "/",
     "allowCommandExecution": true,
-    "commandWhitelist": ""
+    "commandWhitelist": "",
+    "backupDir": "/tmp/iobroker-backups"
   },
   "objects": [],
   "instanceObjects": [
     {
       "_id": "info",
       "type": "channel",
-      "common": { "name": "Adapter Information" },
+      "common": {
+        "name": "Adapter Information"
+      },
       "native": {}
     },
     {
@@ -77,55 +97,118 @@
     {
       "_id": "system.hostname",
       "type": "state",
-      "common": { "name": "Hostname", "type": "string", "role": "info.name", "read": true, "write": false },
+      "common": {
+        "name": "Hostname",
+        "type": "string",
+        "role": "info.name",
+        "read": true,
+        "write": false
+      },
       "native": {}
     },
     {
       "_id": "system.uptime",
       "type": "state",
-      "common": { "name": "Uptime (Sekunden)", "type": "number", "role": "value", "unit": "s", "read": true, "write": false },
+      "common": {
+        "name": "Uptime (Sekunden)",
+        "type": "number",
+        "role": "value",
+        "unit": "s",
+        "read": true,
+        "write": false
+      },
       "native": {}
     },
     {
       "_id": "cpu.usage",
       "type": "state",
-      "common": { "name": "CPU Auslastung", "type": "number", "role": "value.usage", "unit": "%", "min": 0, "max": 100, "read": true, "write": false },
+      "common": {
+        "name": "CPU Auslastung",
+        "type": "number",
+        "role": "value.usage",
+        "unit": "%",
+        "min": 0,
+        "max": 100,
+        "read": true,
+        "write": false
+      },
       "native": {}
     },
     {
       "_id": "cpu.loadAvg1",
       "type": "state",
-      "common": { "name": "Load Average 1min", "type": "number", "role": "value", "read": true, "write": false },
+      "common": {
+        "name": "Load Average 1min",
+        "type": "number",
+        "role": "value",
+        "read": true,
+        "write": false
+      },
       "native": {}
     },
     {
       "_id": "cpu.loadAvg5",
       "type": "state",
-      "common": { "name": "Load Average 5min", "type": "number", "role": "value", "read": true, "write": false },
+      "common": {
+        "name": "Load Average 5min",
+        "type": "number",
+        "role": "value",
+        "read": true,
+        "write": false
+      },
       "native": {}
     },
     {
       "_id": "cpu.loadAvg15",
       "type": "state",
-      "common": { "name": "Load Average 15min", "type": "number", "role": "value", "read": true, "write": false },
+      "common": {
+        "name": "Load Average 15min",
+        "type": "number",
+        "role": "value",
+        "read": true,
+        "write": false
+      },
       "native": {}
     },
     {
       "_id": "memory.totalMB",
       "type": "state",
-      "common": { "name": "RAM gesamt (MB)", "type": "number", "role": "value", "unit": "MB", "read": true, "write": false },
+      "common": {
+        "name": "RAM gesamt (MB)",
+        "type": "number",
+        "role": "value",
+        "unit": "MB",
+        "read": true,
+        "write": false
+      },
       "native": {}
     },
     {
       "_id": "memory.freeMB",
       "type": "state",
-      "common": { "name": "RAM frei (MB)", "type": "number", "role": "value", "unit": "MB", "read": true, "write": false },
+      "common": {
+        "name": "RAM frei (MB)",
+        "type": "number",
+        "role": "value",
+        "unit": "MB",
+        "read": true,
+        "write": false
+      },
       "native": {}
     },
     {
       "_id": "memory.usedPercent",
       "type": "state",
-      "common": { "name": "RAM Auslastung", "type": "number", "role": "value.usage", "unit": "%", "min": 0, "max": 100, "read": true, "write": false },
+      "common": {
+        "name": "RAM Auslastung",
+        "type": "number",
+        "role": "value.usage",
+        "unit": "%",
+        "min": 0,
+        "max": 100,
+        "read": true,
+        "write": false
+      },
       "native": {}
     }
   ]

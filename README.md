@@ -1,6 +1,6 @@
 # ioBroker Linux Dashboard Adapter
 
-[![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](https://github.com/MPunktBPunkt/iobroker.linuxdashboard)
+[![Version](https://img.shields.io/badge/version-0.3.0-blue.svg)](https://github.com/MPunktBPunkt/iobroker.linuxdashboard)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D16-brightgreen.svg)](https://nodejs.org)
 
@@ -11,10 +11,17 @@ CPU, RAM, Festplatten, Prozesse, Dateimanager, Log-Viewer und Terminal, alles an
 
 ## Features
 
-* 📊 **System-Dashboard** – CPU, RAM, Swap, Festplatten, Netzwerk-Interfaces live
-* 📁 **Dateimanager** – Verzeichnisse browsen, Dateien ansehen & herunterladen, Ordner erstellen
-* 📋 **Log-Viewer** – journalctl / syslog direkt im Browser, Regex-Filter, Export
-* ⚙️ **Terminal** – Linux-Befehle ausführen ohne SSH, Befehlshistorie, Schnellzugriff-Buttons
+* 📊 **System-Dashboard** – CPU, RAM, Swap-Gauges, Festplatten, Netzwerk-Interfaces, Prozesse live
+* 📁 **Dateimanager** – Verzeichnisse browsen, Dateien bearbeiten, Download, Upload per Drag & Drop
+* 🔍 **Disk Space Analyzer** – Ordnergrößen als Balkendiagramm (`du -sh`)
+* 🗂️ **Datei-Editor** – Konfigurationsdateien direkt im Browser bearbeiten und speichern
+* 💀 **Prozess-Manager** – Kill (SIGTERM) und Force-Kill (SIGKILL) per Klick
+* 📋 **Log-Viewer** – journalctl / syslog, Regex-Filter, Export
+* ⚫ **Service Manager** – systemd Services starten, stoppen, neustarten per Klick
+* 📦 **Package Manager** – apt search, install, remove, update im Browser
+* ⏰ **Cron-Job Editor** – Crontab visuell bearbeiten mit Vorlagen
+* 📦 **Backup-Manager** – tar.gz Backups erstellen, herunterladen, löschen
+* ⚙️ **Terminal** – Linux-Befehle ohne SSH, Befehlshistorie, Schnellzugriff-Buttons
 * 📈 **ioBroker States** – CPU, RAM, Uptime als automatische Datenpunkte
 * 🔄 **Self-Update** – direkt über das Web-UI aus GitHub aktualisieren
 
@@ -127,10 +134,15 @@ Farbkodierung: 🔴 Fehler · 🟡 Warnung · ⚪ Info · ⬜ Debug · 🔵 Syst
 
 ### Tab: System
 
-* **Schnellbefehle**: df, free, uptime, ps, ip, ss, systemctl, journalctl – ein Klick genügt
-* **ioBroker Buttons**: Restart und Status direkt im Browser
-* **Terminal**: Beliebige Linux-Befehle mit Befehlshistorie (Pfeiltasten)
-* **Update-Check**: Vergleich mit aktuellem GitHub-Release, Ein-Klick-Update
+Der System-Tab ist in 5 Unterbereiche aufgeteilt:
+
+| Bereich  | Inhalt                                                               |
+|----------|----------------------------------------------------------------------|
+| Services | systemd Services auflisten, filtern, starten / stoppen / neustarten |
+| Pakete   | apt search, installierte Pakete, install / remove, apt update        |
+| Cron     | Crontab visuell bearbeiten, Vorlagen, speichern                      |
+| Terminal | Schnellbefehle + vollständiges Terminal mit Befehlshistorie          |
+| Update   | Sysinfo-Grid, GitHub-Versionscheck, Ein-Klick-Update                 |
 
 ---
 
