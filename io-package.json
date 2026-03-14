@@ -1,0 +1,132 @@
+{
+  "common": {
+    "name": "linuxdashboard",
+    "version": "0.1.0",
+    "news": {
+      "0.1.0": {
+        "en": "Initial release – System dashboard, file manager, log viewer, terminal",
+        "de": "Erstveröffentlichung – System-Dashboard, Dateimanager, Log-Viewer, Terminal"
+      }
+    },
+    "title": "Linux Dashboard",
+    "titleLang": {
+      "en": "Linux Dashboard",
+      "de": "Linux Dashboard"
+    },
+    "desc": {
+      "en": "Linux system dashboard with file manager, log viewer and command terminal for ioBroker servers",
+      "de": "Linux System-Dashboard mit Dateimanager, Log-Viewer und Kommando-Terminal für ioBroker-Server"
+    },
+    "authors": ["MPunktBPunkt"],
+    "keywords": ["linux", "dashboard", "system", "filemanager", "terminal", "monitor"],
+    "license": "MIT",
+    "platform": "Javascript/Node.js",
+    "main": "main.js",
+    "icon": "admin/linuxdashboard.svg",
+    "enabled": true,
+    "extIcon": "admin/linuxdashboard.svg",
+    "readme": "https://github.com/MPunktBPunkt/iobroker.linuxdashboard/blob/main/README.md",
+    "loglevel": "info",
+    "mode": "daemon",
+    "type": "utility",
+    "compact": false,
+    "connectionType": "local",
+    "adminUI": {
+      "config": "json"
+    },
+    "localLinks": {
+      "_default": {
+        "link": "http://%ip%:%config_port%/",
+        "name": {
+          "en": "Linux Dashboard UI",
+          "de": "Linux Dashboard UI"
+        }
+      }
+    }
+  },
+  "native": {
+    "port": 8090,
+    "verboseLogging": true,
+    "logBuffer": 500,
+    "metricsInterval": 5,
+    "filemanagerRoot": "/",
+    "allowCommandExecution": true,
+    "commandWhitelist": ""
+  },
+  "objects": [],
+  "instanceObjects": [
+    {
+      "_id": "info",
+      "type": "channel",
+      "common": { "name": "Adapter Information" },
+      "native": {}
+    },
+    {
+      "_id": "info.connection",
+      "type": "state",
+      "common": {
+        "name": "Adapter verbunden",
+        "type": "boolean",
+        "role": "indicator.connected",
+        "read": true,
+        "write": false,
+        "def": false
+      },
+      "native": {}
+    },
+    {
+      "_id": "system.hostname",
+      "type": "state",
+      "common": { "name": "Hostname", "type": "string", "role": "info.name", "read": true, "write": false },
+      "native": {}
+    },
+    {
+      "_id": "system.uptime",
+      "type": "state",
+      "common": { "name": "Uptime (Sekunden)", "type": "number", "role": "value", "unit": "s", "read": true, "write": false },
+      "native": {}
+    },
+    {
+      "_id": "cpu.usage",
+      "type": "state",
+      "common": { "name": "CPU Auslastung", "type": "number", "role": "value.usage", "unit": "%", "min": 0, "max": 100, "read": true, "write": false },
+      "native": {}
+    },
+    {
+      "_id": "cpu.loadAvg1",
+      "type": "state",
+      "common": { "name": "Load Average 1min", "type": "number", "role": "value", "read": true, "write": false },
+      "native": {}
+    },
+    {
+      "_id": "cpu.loadAvg5",
+      "type": "state",
+      "common": { "name": "Load Average 5min", "type": "number", "role": "value", "read": true, "write": false },
+      "native": {}
+    },
+    {
+      "_id": "cpu.loadAvg15",
+      "type": "state",
+      "common": { "name": "Load Average 15min", "type": "number", "role": "value", "read": true, "write": false },
+      "native": {}
+    },
+    {
+      "_id": "memory.totalMB",
+      "type": "state",
+      "common": { "name": "RAM gesamt (MB)", "type": "number", "role": "value", "unit": "MB", "read": true, "write": false },
+      "native": {}
+    },
+    {
+      "_id": "memory.freeMB",
+      "type": "state",
+      "common": { "name": "RAM frei (MB)", "type": "number", "role": "value", "unit": "MB", "read": true, "write": false },
+      "native": {}
+    },
+    {
+      "_id": "memory.usedPercent",
+      "type": "state",
+      "common": { "name": "RAM Auslastung", "type": "number", "role": "value.usage", "unit": "%", "min": 0, "max": 100, "read": true, "write": false },
+      "native": {}
+    }
+  ]
+}

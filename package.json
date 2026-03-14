@@ -1,0 +1,19 @@
+{
+  "name": "iobroker.linuxdashboard",
+  "version": "0.3.0",
+  "description": "ioBroker Adapter – Linux System Dashboard mit Dateimanager und Terminal",
+  "author": "MPunktBPunkt",
+  "license": "MIT",
+  "main": "main.js",
+  "engines": {
+    "node": ">=16"
+  },
+  "scripts": {
+    "start": "node main.js"
+  },
+  "dependencies": {
+    "@iobroker/adapter-core": "^3.0.0",
+    "ws": "^8.17.0"
+  },
+  "devDependencies": {}
+}

@@ -1,0 +1,52 @@
+{
+  "type": "panel",
+  "title": "Linux Dashboard Konfiguration",
+  "items": {
+    "port": {
+      "type": "number",
+      "label": "HTTP Port",
+      "min": 1024,
+      "max": 65535,
+      "default": 8090,
+      "help": "Port auf dem das Web-UI erreichbar ist"
+    },
+    "metricsInterval": {
+      "type": "number",
+      "label": "Metriken-Intervall (Sekunden)",
+      "min": 1,
+      "max": 60,
+      "default": 5,
+      "help": "Wie oft Systemmetriken aktualisiert werden"
+    },
+    "logBuffer": {
+      "type": "number",
+      "label": "Log-Puffer (Einträge)",
+      "min": 50,
+      "max": 5000,
+      "default": 500
+    },
+    "filemanagerRoot": {
+      "type": "text",
+      "label": "Dateimanager Wurzelverzeichnis",
+      "default": "/",
+      "help": "Oberster Pfad der im Dateimanager erreichbar ist (z.B. / oder /home)"
+    },
+    "allowCommandExecution": {
+      "type": "checkbox",
+      "label": "Kommando-Ausführung erlauben",
+      "default": true,
+      "help": "Ermöglicht die Ausführung von Linux-Befehlen über das System-Tab"
+    },
+    "commandWhitelist": {
+      "type": "text",
+      "label": "Befehls-Whitelist (kommagetrennt, leer = alle erlaubt)",
+      "default": "",
+      "help": "z.B.: ls,df,free,ps,systemctl – nur diese Befehle werden ausgeführt"
+    },
+    "verboseLogging": {
+      "type": "checkbox",
+      "label": "Ausführliches Logging",
+      "default": true
+    }
+  }
+}
