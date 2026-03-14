@@ -226,17 +226,17 @@ a{color:var(--accent);text-decoration:none}
   background:var(--bg3);border-radius:var(--rs);display:none}
 .custom-rule-row{display:flex;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border2)}
 /* Storage Analyzer */
-.sa-row{display:grid;grid-template-columns:1fr 80px;align-items:center;gap:8px;
+.sa-row{display:grid;grid-template-columns:minmax(0,1fr) 80px;align-items:center;gap:8px;
   padding:6px 10px;border-bottom:1px solid var(--border2);cursor:pointer;font-size:12px}
 .sa-row:hover{background:var(--bg3)}
-.sa-name{font-family:var(--mono);color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sa-name{font-family:var(--mono);color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;max-width:100%}
 .sa-name.sa-link{color:var(--accent)}
 .sa-size-col{font-family:var(--mono);text-align:right;font-weight:600}
 .sa-bar{height:3px;background:var(--bg3);border-radius:2px;overflow:hidden;margin-top:3px}
 .sa-bar-fill{height:100%;border-radius:2px}
 .sa-panel-hdr{padding:7px 10px;font-size:11px;color:var(--dim);text-transform:uppercase;
   letter-spacing:.6px;border-bottom:1px solid var(--border);background:var(--bg1);font-weight:600;
-  display:flex;justify-content:space-between}
+  display:flex;justify-content:space-between;overflow:hidden}
 .sa-scroll{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);
   overflow:hidden;max-height:460px;overflow-y:auto}
 .sa-placeholder{padding:32px;text-align:center;color:var(--dim);font-size:13px}
@@ -531,8 +531,8 @@ return `<!DOCTYPE html>
         <button class="btn btn-red" onclick="runStorageAnalysis()">&#x1F50D; Analyse starten</button>
         <span id="sa-status" style="font-size:12px;color:var(--muted)"></span>
       </div>
-      <div class="grid grid-2" style="gap:16px">
-        <div>
+      <div class="grid grid-2" style="gap:16px;min-width:0">
+        <div style="min-width:0;overflow:hidden">
           <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px;display:flex;align-items:center;gap:8px">
             <span style="color:var(--red)">&#x1F4C4;</span>Gr&ouml;&szlig;te Dateien
             <span id="sa-files-count" style="font-size:11px;color:var(--dim);font-weight:400"></span>
@@ -542,7 +542,7 @@ return `<!DOCTYPE html>
             <div class="sa-placeholder">Analyse starten</div>
           </div>
         </div>
-        <div>
+        <div style="min-width:0;overflow:hidden">
           <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px;display:flex;align-items:center;gap:8px">
             <span style="color:var(--yellow)">&#x1F4C1;</span>Gr&ouml;&szlig;te Ordner
             <span id="sa-dirs-count" style="font-size:11px;color:var(--dim);font-weight:400"></span>
