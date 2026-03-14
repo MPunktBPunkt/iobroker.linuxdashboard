@@ -32,8 +32,11 @@ CPU, RAM, Festplatten, Prozesse, Dateimanager, Log-Viewer und Terminal, alles an
 ### Option A – direkt von GitHub (empfohlen)
 
 ```bash
-iobroker add https://github.com/MPunktBPunkt/iobroker.linuxdashboard
+iobroker url https://github.com/MPunktBPunkt/iobroker.linuxdashboard
 ```
+
+> **Hinweis:** `iobroker url` installiert aus einer GitHub-URL.  
+> `iobroker add` funktioniert nur für Adapter aus dem offiziellen ioBroker-Repository.
 
 ### Option B – manuell (ohne Internet / Offline)
 
@@ -197,7 +200,7 @@ Bei verfügbarem Update erscheint der Button **„Update installieren"**.
 ### Option B – Kommandozeile
 
 ```bash
-iobroker upgrade linuxdashboard https://github.com/MPunktBPunkt/iobroker.linuxdashboard
+iobroker url https://github.com/MPunktBPunkt/iobroker.linuxdashboard
 iobroker restart linuxdashboard
 ```
 

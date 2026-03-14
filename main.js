@@ -1778,7 +1778,7 @@ class LinuxDashboard extends utils.Adapter {
     }
 
     _doUpdate(res) {
-        const cmd = `cd /opt/iobroker && iobroker upgrade linuxdashboard https://github.com/${GITHUB_REPO} && iobroker restart linuxdashboard`;
+        const cmd = `cd /opt/iobroker && iobroker url https://github.com/${GITHUB_REPO} && iobroker restart linuxdashboard`;
         this._addLog('SYSTEM', 'Self-Update gestartet...');
         exec(cmd, { timeout: 120000 }, (err, stdout, stderr) => {
             this._json(res, { ok: !err, output: stdout || stderr || '', error: err ? err.message : null });
