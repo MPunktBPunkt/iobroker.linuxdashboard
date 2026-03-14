@@ -15,7 +15,7 @@ try {
     WebSocketServer = ws.WebSocketServer || ws.Server;
 } catch (_) { WebSocket = null; WebSocketServer = null; }
 
-const ADAPTER_VERSION = '0.5.0';
+const ADAPTER_VERSION = '0.6.0';
 const GITHUB_REPO     = 'MPunktBPunkt/iobroker.linuxdashboard';
 
 // ── CPU diff ──────────────────────────────────────────────────────────────────
@@ -81,6 +81,7 @@ a{color:var(--accent);text-decoration:none}
 .tab-btn.active-nodes{color:var(--tab-nodes)!important;border-bottom-color:var(--tab-nodes)}
 .tab-btn.active-logs{color:var(--tab-logs)!important;border-bottom-color:var(--tab-logs)}
 .tab-btn.active-system{color:var(--tab-system)!important;border-bottom-color:var(--tab-system)}
+.tab-btn.active-iobroker{color:var(--green)!important;border-bottom-color:var(--green)}
 .content{padding:24px;max-width:1400px;margin:0 auto}
 .tab-panel{display:none}.tab-panel.active{display:block}
 .card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:20px;margin-bottom:16px}
@@ -255,7 +256,8 @@ a{color:var(--accent);text-decoration:none}
 .terminal-input{display:flex;gap:8px;padding:10px 16px;background:var(--bg0);align-items:center}
 .term-prompt{color:var(--green);font-family:var(--mono);font-size:13px;white-space:nowrap}
 .terminal-output{background:var(--bg0);padding:0 16px 10px;font-family:var(--mono);font-size:12px;
-  min-height:180px;max-height:380px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;line-height:1.7;color:var(--green)}
+  min-height:180px;max-height:380px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;line-height:1.7;color:var(--green);
+  display:flex;flex-direction:column-reverse}
 .quick-btns{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
 /* Buttons + Inputs */
 .btn{display:inline-flex;align-items:center;gap:5px;padding:6px 14px;border-radius:var(--rs);border:none;
@@ -323,7 +325,8 @@ return `<!DOCTYPE html>
   <button class="tab-btn" id="btn-daten"  onclick="showTab('daten')">&#x1F4CA; Daten</button>
   <button class="tab-btn" id="btn-nodes"  onclick="showTab('nodes')">&#x1F4C1; Nodes</button>
   <button class="tab-btn" id="btn-logs"   onclick="showTab('logs')">&#x1F4CB; Logs</button>
-  <button class="tab-btn" id="btn-system" onclick="showTab('system')">&#x2699;&#xFE0F; System</button>
+  <button class="tab-btn" id="btn-system"   onclick="showTab('system')">&#x2699;&#xFE0F; System</button>
+  <button class="tab-btn" id="btn-iobroker" onclick="showTab('iobroker')">&#x1F9E9; ioBroker</button>
 </nav>
 
 <!-- ═══ TAB: DATEN ═══ -->
@@ -785,6 +788,8 @@ return `<!DOCTYPE html>
         <button class="btn btn-ghost btn-sm" onclick="runQuick('cat /proc/temperature 2>/dev/null || vcgencmd measure_temp 2>/dev/null')">&#x1F321; Temperatur</button>
         <button class="btn btn-yellow btn-sm" onclick="runQuick('systemctl restart iobroker')">&#x21BB; ioBroker Restart</button>
         <button class="btn btn-ghost btn-sm" onclick="runQuick('systemctl status iobroker')">ioBroker Status</button>
+        <button class="btn btn-ghost btn-sm" onclick="runQuick('sudo apt-get update 2>&1')">&#x1F504; apt update</button>
+        <button class="btn btn-green btn-sm" onclick="runSudoUpgrade()">&#x2B06; apt upgrade</button>
       </div>
     </div>
     <div class="card" style="padding:0;overflow:hidden">
@@ -796,7 +801,7 @@ return `<!DOCTYPE html>
           <span style="font-size:12px;color:var(--muted);margin-left:8px;font-family:var(--mono)">bash &mdash; ioBroker Linux Dashboard</span>
           <button class="btn btn-ghost btn-sm" style="margin-left:auto;font-size:11px" onclick="termClear()">Clear</button>
         </div>
-        <div class="terminal-output" id="term-output">Linux Dashboard Terminal bereit.&#10;</div>
+        <div class="terminal-output" id="term-output"><div class="term-placeholder" style="color:var(--dim);padding:8px 0">Linux Dashboard Terminal bereit.</div></div>
         <div class="terminal-input">
           <span class="term-prompt" id="term-prompt">iobroker@linux:~$</span>
           <input type="text" class="term-cmd" id="term-cmd" placeholder="Befehl eingeben..." onkeydown="termKeydown(event)">
@@ -825,6 +830,58 @@ return `<!DOCTYPE html>
   </div>
 </div></div>
 
+<!-- ═══ TAB: ioBroker ═══ -->
+<div id="tab-iobroker" class="tab-panel"><div class="content">
+
+  <!-- Adapter Liste -->
+  <div class="card">
+    <div class="card-title">
+      <span class="dot" style="background:var(--green)"></span>ioBroker Adapter
+      <div style="display:flex;gap:8px;margin-left:auto;align-items:center">
+        <input type="text" id="iob-filter" placeholder="Filter..." style="width:160px" oninput="iobFilter(this.value)">
+        <button class="btn btn-ghost btn-sm" onclick="loadIobAdapters()">&#x21BB; Aktualisieren</button>
+      </div>
+    </div>
+    <div style="overflow-x:auto">
+      <table class="data-table" id="iob-table">
+        <thead><tr>
+          <th>Adapter</th><th>Instanz</th><th>Status</th><th>Version</th><th>Aktionen</th>
+        </tr></thead>
+        <tbody id="iob-tbody"><tr><td colspan="5" style="color:var(--dim);padding:20px">Lade...</td></tr></tbody>
+      </table>
+    </div>
+    <div id="iob-output" class="svc-output hidden"></div>
+  </div>
+
+  <!-- ioBroker System -->
+  <div class="grid grid-2">
+    <div class="card">
+      <div class="card-title"><span class="dot" style="background:var(--yellow)"></span>ioBroker System</div>
+      <div class="quick-btns">
+        <button class="btn btn-yellow" onclick="iobCmd('restart')">&#x21BB; Restart</button>
+        <button class="btn btn-ghost btn-sm" onclick="iobCmd('status')">&#x2139; Status</button>
+        <button class="btn btn-ghost btn-sm" onclick="iobCmd('stop')">&#x25A0; Stop</button>
+        <button class="btn btn-green btn-sm" onclick="iobCmd('start')">&#x25B6; Start</button>
+        <button class="btn btn-ghost btn-sm" onclick="iobCmd('logs')">&#x1F4CB; Logs</button>
+        <button class="btn btn-ghost btn-sm" onclick="iobCmd('diag')">&#x1F50D; Diagnose</button>
+      </div>
+      <div id="iob-sys-output" class="svc-output hidden"></div>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="dot" style="background:var(--accent)"></span>Adapter installieren</div>
+      <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+        <input type="text" id="iob-install-name" placeholder="Adaptername (z.B. telegram)" style="flex:1">
+        <button class="btn btn-green btn-sm" onclick="iobInstall()">&#x2B; Installieren</button>
+      </div>
+      <div style="font-size:12px;color:var(--dim)">
+        Installiert via: <span style="font-family:var(--mono);color:var(--muted)">iobroker add &lt;name&gt;</span>
+      </div>
+      <div id="iob-install-output" class="svc-output hidden" style="margin-top:8px"></div>
+    </div>
+  </div>
+
+</div></div>
+
 <script>
 // ── Gauge ──────────────────────────────────────────────────────────────────
 function setGauge(id, pct, c1, c2, c3) {
@@ -847,7 +904,8 @@ window.showTab = function(name) {
   if (name === 'daten')  loadMetrics();
   if (name === 'nodes')  { fmLoad(currentPath); loadBackups(); }
   if (name === 'logs')   loadLogs();
-  if (name === 'system') { showSysSub(_activeSysSub); loadSysInfo(); }
+  if (name === 'system')   { showSysSub(_activeSysSub); loadSysInfo(); }
+  if (name === 'iobroker')  { loadIobAdapters(); }
 };
 window.showSysSub = function(name) {
   document.querySelectorAll('.sys-panel').forEach(p => p.classList.remove('active'));
@@ -1157,6 +1215,92 @@ async function deleteBackup(name) {
     if (d.ok) loadBackups(); else alert('Fehler: ' + (d.error||'?'));
   } catch(e) { alert('Fehler: ' + e.message); }
 }
+
+// ── ioBroker Adapter Manager ───────────────────────────────────────────────
+let _iobAdapters = [];
+
+async function loadIobAdapters() {
+  const tbody = document.getElementById('iob-tbody');
+  tbody.innerHTML = '<tr><td colspan="5" style="color:var(--muted);padding:16px">\u23f3 Lade Adapter...</td></tr>';
+  try {
+    const d = await fetchJSON('/api/iob-adapters');
+    _iobAdapters = d.adapters || [];
+    renderIobAdapters(_iobAdapters);
+  } catch(e) {
+    tbody.innerHTML = '<tr><td colspan="5" style="color:var(--red);padding:16px">Fehler: ' + esc(e.message) + '</td></tr>';
+  }
+}
+
+function iobFilter(q) {
+  renderIobAdapters(q ? _iobAdapters.filter(a => a.name.toLowerCase().includes(q.toLowerCase())) : _iobAdapters);
+}
+
+function renderIobAdapters(adapters) {
+  const tbody = document.getElementById('iob-tbody');
+  if (!adapters.length) {
+    tbody.innerHTML = '<tr><td colspan="5" style="color:var(--dim);padding:16px">Keine Adapter gefunden</td></tr>';
+    return;
+  }
+  tbody.innerHTML = adapters.map(a => {
+    const statusCls = a.alive ? 'tag-green' : 'tag-red';
+    const statusTxt = a.alive ? '\u25CF l\u00e4uft' : '\u25CF gestoppt';
+    const updateAvail = a.updateAvailable ? '<span class="tag" style="background:#e3b34125;color:var(--yellow);margin-left:4px">Update</span>' : '';
+    return '<tr>' +
+      '<td style="font-family:var(--mono);color:var(--accent)">' + esc(a.name) + updateAvail + '</td>' +
+      '<td style="color:var(--muted)">' + esc(a.instance) + '</td>' +
+      '<td><span class="tag ' + statusCls + '">' + statusTxt + '</span></td>' +
+      '<td style="font-family:var(--mono);font-size:11px;color:var(--muted)">' + esc(a.version || '-') + '</td>' +
+      '<td style="display:flex;gap:4px;flex-wrap:wrap">' +
+        '<button class="btn btn-green btn-sm" title="Start" data-inst="' + esc(a.instance) + '" data-act="start" onclick="iobAdapterAction(this.dataset.inst,this.dataset.act)">&#x25B6;</button>' +
+        '<button class="btn btn-yellow btn-sm" title="Restart" data-inst="' + esc(a.instance) + '" data-act="restart" onclick="iobAdapterAction(this.dataset.inst,this.dataset.act)">&#x21BB;</button>' +
+        '<button class="btn btn-red btn-sm" title="Stop" data-inst="' + esc(a.instance) + '" data-act="stop" onclick="iobAdapterAction(this.dataset.inst,this.dataset.act)">&#x25A0;</button>' +
+        (a.updateAvailable ? '<button class="btn btn-ghost btn-sm" title="Update" data-inst="' + esc(a.name) + '" data-act="update" onclick="iobAdapterAction(this.dataset.inst,this.dataset.act)">&#x2B06;</button>' : '') +
+      '</td>' +
+    '</tr>';
+  }).join('');
+}
+
+async function iobAdapterAction(nameOrInstance, action) {
+  const out = document.getElementById('iob-output');
+  out.classList.remove('hidden');
+  out.textContent = action + ' ' + nameOrInstance + ' ...';
+  out.style.color = 'var(--muted)';
+  try {
+    const d = await postJSON('/api/iob-action', { name: nameOrInstance, action });
+    out.textContent = d.output || d.error || '\u2714 Fertig';
+    out.style.color = d.error ? 'var(--red)' : 'var(--green)';
+    if (action !== 'update') setTimeout(loadIobAdapters, 2000);
+  } catch(e) { out.textContent = 'Fehler: ' + e.message; out.style.color = 'var(--red)'; }
+}
+
+async function iobCmd(action) {
+  const out = document.getElementById('iob-sys-output');
+  out.classList.remove('hidden');
+  out.textContent = '\u23f3 ' + action + ' ...';
+  out.style.color = 'var(--muted)';
+  try {
+    const d = await postJSON('/api/iob-action', { name: 'iobroker', action });
+    out.textContent = d.output || d.error || '\u2714 Fertig';
+    out.style.color = d.error ? 'var(--red)' : 'var(--green)';
+  } catch(e) { out.textContent = 'Fehler: ' + e.message; out.style.color = 'var(--red)'; }
+}
+
+async function iobInstall() {
+  const name = document.getElementById('iob-install-name').value.trim();
+  if (!name) { alert('Adaptername eingeben'); return; }
+  if (!confirm('iobroker add ' + name + ' ausf\u00fchren?')) return;
+  const out = document.getElementById('iob-install-output');
+  out.classList.remove('hidden');
+  out.textContent = '\u23f3 Installiere ' + name + ' ...';
+  out.style.color = 'var(--muted)';
+  try {
+    const d = await postJSON('/api/iob-action', { name, action: 'add' });
+    out.textContent = d.output || d.error || '\u2714 Fertig';
+    out.style.color = d.error ? 'var(--red)' : 'var(--green)';
+    if (!d.error) setTimeout(loadIobAdapters, 2000);
+  } catch(e) { out.textContent = 'Fehler: ' + e.message; out.style.color = 'var(--red)'; }
+}
+
 
 // ── Bereinigung ────────────────────────────────────────────────────────────
 let _customRules = JSON.parse(localStorage.getItem('ld_custom_rules') || '[]');
@@ -1543,7 +1687,7 @@ function applyLogFilter() {
   if (document.getElementById('log-autoscroll').checked) box.scrollTop = box.scrollHeight;
 }
 function exportLogs() {
-  const blob = new Blob([_rawLogs.join('\\n')], {type:'text/plain'});
+  const blob = new Blob([_rawLogs.join('\\\n')], {type:'text/plain'});
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
   a.download = 'linuxdashboard-log-' + new Date().toISOString().slice(0,19).replace(/:/g,'-') + '.txt'; a.click();
 }
@@ -1559,16 +1703,32 @@ async function termRun() {
   const input = document.getElementById('term-cmd'); const cmd = input.value.trim(); if (!cmd) return;
   _cmdHistory.unshift(cmd); _histIdx = -1; input.value = '';
   const out = document.getElementById('term-output');
-  out.textContent += '\\n' + document.getElementById('term-prompt').textContent + ' ' + cmd + '\\n';
-  out.scrollTop = out.scrollHeight;
+  // Prepend new output (flex-column-reverse = newest at top visually)
+  const placeholder = out.querySelector('.term-placeholder');
+  const block = document.createElement('div');
+  block.style.cssText = 'border-bottom:1px solid var(--border2);padding-bottom:8px;margin-bottom:8px';
+  block.innerHTML = '<span style="color:var(--muted)">' + esc(document.getElementById('term-prompt').textContent) + ' </span>' +
+                    '<span style="color:var(--yellow)">' + esc(cmd) + '</span>\\n<span id="term-result-' + Date.now() + '">\u23f3</span>';
+  out.insertBefore(block, out.firstChild);
   try {
     const d = await postJSON('/api/exec', { cmd });
-    out.textContent += (d.stdout||'') + (d.stderr ? '[stderr]: ' + d.stderr : '') + '\\n';
-  } catch(e) { out.textContent += 'Fehler: ' + e.message + '\\n'; }
-  out.scrollTop = out.scrollHeight;
+    const resultEl = block.querySelector('[id^=term-result]');
+    const output = (d.stdout||'') + (d.stderr ? '\\n[stderr]: ' + d.stderr : '');
+    if (resultEl) resultEl.textContent = output || '(keine Ausgabe)';
+  } catch(e) {
+    const resultEl = block.querySelector('[id^=term-result]');
+    if (resultEl) { resultEl.textContent = 'Fehler: ' + e.message; resultEl.style.color = 'var(--red)'; }
+  }
 }
 function runQuick(cmd) { showTab('system'); showSysSub('terminal'); document.getElementById('term-cmd').value = cmd; setTimeout(termRun, 150); }
-function termClear() { document.getElementById('term-output').textContent = 'Linux Dashboard Terminal bereit.\\n'; }
+async function runSudoUpgrade() {
+  if (!confirm('sudo apt-get upgrade -y ausf\u00fchren? Das aktualisiert alle Systempakete.')) return;
+  runQuick('sudo apt-get upgrade -y 2>&1');
+}
+function termClear() {
+  const out = document.getElementById('term-output');
+  out.innerHTML = '<div class="term-placeholder" style="color:var(--dim);padding:8px 0">Linux Dashboard Terminal bereit.</div>';
+}
 
 // ── System Info ────────────────────────────────────────────────────────────
 async function loadSysInfo() {
@@ -1799,6 +1959,13 @@ class LinuxDashboard extends utils.Adapter {
             const fp = path.join(backupDir, name);
             try { fs.unlinkSync(fp); this._addLog('INFO', `Backup gelöscht: ${fp}`); return this._json(res, { ok: true }); }
             catch (e) { return this._json(res, { ok: false, error: e.message }); }
+        }
+
+        // ── ioBroker Adapter Manager
+        if (p === '/api/iob-adapters' && m === 'GET') return this._json(res, await this._iobAdapters());
+        if (p === '/api/iob-action'   && m === 'POST') {
+            const body = JSON.parse(await this._readBody(req));
+            return this._json(res, await this._iobAction(body.name, body.action));
         }
 
         // ── Bereinigung
@@ -2199,26 +2366,82 @@ class LinuxDashboard extends utils.Adapter {
         return -1;
     }
 
+    // ── ioBroker Adapter Manager ──────────────────────────────────────────────
+    async _iobAdapters() {
+        try {
+            // Get all adapter instances via iobroker list instances
+            const raw = await this._cmdOut('cd /opt/iobroker && node node_modules/iobroker.js-controller/iobroker.js list instances 2>/dev/null || iobroker list instances 2>/dev/null');
+            const adapters = [];
+            raw.trim().split('\n').forEach(line => {
+                // Format: "  + system.adapter.adaptername.0 : alive"  or similar
+                const m = line.match(/([+\-!?])\s+system\.adapter\.([\w.-]+)\.(\d+)\s*(?::\s*(.*))?/);
+                if (!m) return;
+                const statusChar = m[1];
+                const name       = m[2];
+                const instance   = m[2] + '.' + m[3];
+                const info       = (m[4] || '').trim();
+                const alive      = statusChar === '+';
+                // Try to get version from package.json
+                let version = '-';
+                try {
+                    const pkgPath = `/opt/iobroker/node_modules/iobroker.${name}/package.json`;
+                    if (require('fs').existsSync(pkgPath)) {
+                        version = JSON.parse(require('fs').readFileSync(pkgPath, 'utf8')).version || '-';
+                    }
+                } catch(_) {}
+                adapters.push({ name, instance, alive, version, info, updateAvailable: false });
+            });
+            return { adapters };
+        } catch(e) {
+            return { adapters: [], error: e.message };
+        }
+    }
+
+    async _iobAction(name, action) {
+        let cmd = '';
+        const iob = 'cd /opt/iobroker && node node_modules/iobroker.js-controller/iobroker.js';
+        const iobAlt = 'iobroker';
+        const run = (c) => `(${c} 2>&1) || (${c.replace(iob, iobAlt)} 2>&1)`;
+
+        if (action === 'start')   cmd = run(`${iob} start ${name}`);
+        else if (action === 'stop')    cmd = run(`${iob} stop ${name}`);
+        else if (action === 'restart') cmd = run(`${iob} restart ${name}`);
+        else if (action === 'status')  cmd = run(`${iob} status ${name}`);
+        else if (action === 'logs')    cmd = `journalctl -u iobroker -n 50 --no-pager 2>/dev/null || tail -50 /opt/iobroker/log/iobroker.current.log 2>/dev/null`;
+        else if (action === 'diag')    cmd = run(`${iob} diag`);
+        else if (action === 'update')  cmd = run(`${iob} upgrade ${name} 2>&1`);
+        else if (action === 'add')     cmd = run(`${iob} add ${name} 2>&1`);
+        else return { error: 'Unbekannte Aktion: ' + action };
+
+        this._addLog('INFO', `ioBroker ${action}: ${name}`);
+        const output = await this._cmdOut(cmd, 120000);
+        return { ok: true, output: output.trim() || '\u2714 Fertig' };
+    }
+
     // ── Bereinigung ──────────────────────────────────────────────────────────
     async _cleanPreview(params) {
         const type = params.get('type') || '';
+        // Helper: run with sudo if available, fallback without
+        const s = (cmd) => `sudo sh -c '${cmd}' 2>/dev/null || sh -c '${cmd}' 2>/dev/null`;
         try {
             if (type === 'apt') {
-                const size = await this._cmdOut("du -sh /var/cache/apt/archives/ 2>/dev/null | cut -f1");
-                const bytes = await this._cmdOut("du -sb /var/cache/apt/archives/ 2>/dev/null | cut -f1");
-                const list  = await this._cmdOut("ls /var/cache/apt/archives/*.deb 2>/dev/null | head -20 || echo '(keine .deb Dateien)'");
+                const size  = await this._cmdOut(s("du -sh /var/cache/apt/archives/ | cut -f1"));
+                const bytes = await this._cmdOut(s("du -sb /var/cache/apt/archives/ | cut -f1"));
+                const list  = await this._cmdOut(s("ls /var/cache/apt/archives/*.deb 2>/dev/null | head -20 || echo '(keine .deb Dateien)'"));
                 return { preview: `Gr\u00f6\u00dfe: ${size.trim()}\n\n${list.trim()}`, bytes: parseInt(bytes) || 0, sizeHuman: size.trim() };
             }
             if (type === 'journal') {
-                const cur  = await this._cmdOut("journalctl --disk-usage 2>/dev/null || echo 'N/A'");
-                const files = await this._cmdOut("find /var/log/journal -type f 2>/dev/null | wc -l");
-                const bytes = await this._cmdOut("du -sb /var/log/journal 2>/dev/null | cut -f1 || echo 0");
-                return { preview: cur.trim() + `\n${files.trim()} Journal-Dateien`, bytes: parseInt(bytes) || 0, sizeHuman: (await this._cmdOut("du -sh /var/log/journal 2>/dev/null | cut -f1")).trim() };
+                const cur   = await this._cmdOut('journalctl --disk-usage 2>/dev/null || echo "N/A"');
+                const files = await this._cmdOut(s("find /var/log/journal -type f | wc -l"));
+                const bytes = await this._cmdOut(s("du -sb /var/log/journal | cut -f1 || echo 0"));
+                const sh    = await this._cmdOut(s("du -sh /var/log/journal | cut -f1"));
+                return { preview: cur.trim() + `\n${files.trim()} Journal-Dateien`, bytes: parseInt(bytes) || 0, sizeHuman: sh.trim() };
             }
             if (type === 'oldlogs') {
-                const list  = await this._cmdOut("find /var/log -type f \\( -name '*.gz' -o -name '*.1' -o -name '*.2' -o -name '*.3' -o -name '*.4' \\) 2>/dev/null | head -30");
-                const bytes = await this._cmdOut("find /var/log -type f \\( -name '*.gz' -o -name '*.1' -o -name '*.2' -o -name '*.3' -o -name '*.4' \\) -printf '%s\\n' 2>/dev/null | awk '{s+=$1}END{print s+0}'");
-                const count = await this._cmdOut("find /var/log -type f \\( -name '*.gz' -o -name '*.1' -o -name '*.2' -o -name '*.3' -o -name '*.4' \\) 2>/dev/null | wc -l");
+                const pat   = "-name '*.gz' -o -name '*.1' -o -name '*.2' -o -name '*.3' -o -name '*.4'";
+                const list  = await this._cmdOut(s(`find /var/log -type f \\( ${pat} \\) | head -30`));
+                const bytes = await this._cmdOut(s(`find /var/log -type f \\( ${pat} \\) -printf '%s\\n' | awk '{s+=\$1}END{print s+0}'`));
+                const count = await this._cmdOut(s(`find /var/log -type f \\( ${pat} \\) | wc -l`));
                 return { preview: `${count.trim()} Dateien:\n${list.trim() || '(keine gefunden)'}`, bytes: parseInt(bytes) || 0, sizeHuman: this._fmtBytes(parseInt(bytes) || 0) };
             }
             if (type === 'tmp') {
@@ -2230,7 +2453,7 @@ class LinuxDashboard extends utils.Adapter {
                 return { preview: `${count.trim()} Dateien${days > 0 ? ' \u00e4lter als ' + days + ' Tage' : ''}:\n${list.trim() || '(keine)'}`, bytes: parseInt(bytes) || 0, sizeHuman: this._fmtBytes(parseInt(bytes) || 0) };
             }
             if (type === 'npm') {
-                const dir   = await this._cmdOut("npm config get cache 2>/dev/null || echo ~/.npm");
+                const dir   = await this._cmdOut('npm config get cache 2>/dev/null || echo ~/.npm');
                 const bytes = await this._cmdOut(`du -sb ${dir.trim()} 2>/dev/null | cut -f1 || echo 0`);
                 return { preview: `npm Cache: ${dir.trim()}\nGr\u00f6\u00dfe: ${this._fmtBytes(parseInt(bytes) || 0)}`, bytes: parseInt(bytes) || 0, sizeHuman: this._fmtBytes(parseInt(bytes) || 0) };
             }
@@ -2249,20 +2472,23 @@ class LinuxDashboard extends utils.Adapter {
 
     async _cleanRun(params) {
         const { type } = params;
+        // Prefix with sudo; -n = non-interactive (fail fast if no sudo rights)
+        const sudo = 'sudo -n';
         try {
             let cmd = '';
             if (type === 'apt') {
-                cmd = 'apt-get clean 2>&1 && apt-get autoremove -y 2>&1 && echo "\u2714 APT-Cache geleert"';
+                cmd = `${sudo} apt-get clean 2>&1 && ${sudo} apt-get autoremove -y 2>&1 && echo "\u2714 APT-Cache geleert"`;
             } else if (type === 'journal') {
                 const mb   = parseInt(params.maxSizeMB || '500', 10);
                 const days = parseInt(params.maxDays   || '30',  10);
-                cmd = `journalctl --vacuum-size=${mb}M 2>&1 && journalctl --vacuum-time=${days}d 2>&1`;
+                cmd = `${sudo} journalctl --vacuum-size=${mb}M 2>&1 && ${sudo} journalctl --vacuum-time=${days}d 2>&1`;
             } else if (type === 'oldlogs') {
-                cmd = "find /var/log -type f \\( -name '*.gz' -o -name '*.1' -o -name '*.2' -o -name '*.3' -o -name '*.4' \\) -delete 2>&1 && echo '\u2714 Alte Log-Dateien gel\u00f6scht'";
+                const pat = "-name '*.gz' -o -name '*.1' -o -name '*.2' -o -name '*.3' -o -name '*.4'";
+                cmd = `${sudo} find /var/log -type f \( ${pat} \) -delete 2>&1 && echo '\u2714 Alte Log-Dateien gel\u00f6scht'`;
             } else if (type === 'tmp') {
                 const days  = parseInt(params.days || '7', 10);
                 const mtime = days > 0 ? `-mtime +${days}` : '';
-                cmd = `find /tmp /var/tmp -type f ${mtime} -delete 2>&1 && echo '\u2714 /tmp bereinigt'`;
+                cmd = `${sudo} find /tmp /var/tmp -type f ${mtime} -delete 2>&1 && echo '\u2714 /tmp bereinigt'`;
             } else if (type === 'npm') {
                 cmd = 'npm cache clean --force 2>&1 && echo "\u2714 npm Cache geleert"';
             } else if (type === 'custom') {
@@ -2270,14 +2496,17 @@ class LinuxDashboard extends utils.Adapter {
                 if (!rules.length) return { output: 'Keine Regeln definiert' };
                 const cmds = rules.map(r => {
                     const mtime = r.days > 0 ? `-mtime +${r.days}` : '';
-                    return `echo "--- ${r.path} ---" && find ${r.path} -type f ${mtime} -delete 2>&1 || rm -f ${r.path} 2>&1`;
+                    return `echo "--- ${r.path} ---" && ${sudo} find ${r.path} -type f ${mtime} -delete 2>&1 || ${sudo} rm -f ${r.path} 2>&1`;
                 });
                 cmd = cmds.join(' && ');
             } else {
                 return { error: 'Unbekannter Typ' };
             }
             this._addLog('INFO', `Bereinigung: ${type}`);
-            const result = await this._cmdOut(cmd, 60000);
+            const result = await this._cmdOut(cmd, 120000);
+            if (result.includes('sudo: a password is required') || result.includes('sudo: command not found')) {
+                return { ok: false, error: 'Keine sudo-Rechte. Bitte sudoers einrichten:\necho "iobroker ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/iobroker' };
+            }
             return { ok: true, output: result.trim() || '\u2714 Fertig (keine Ausgabe)' };
         } catch (e) { return { error: e.message }; }
     }

@@ -1,6 +1,6 @@
 # ioBroker Linux Dashboard Adapter
 
-[![Version](https://img.shields.io/badge/version-0.5.0-blue.svg)](https://github.com/MPunktBPunkt/iobroker.linuxdashboard)
+[![Version](https://img.shields.io/badge/version-0.6.0-blue.svg)](https://github.com/MPunktBPunkt/iobroker.linuxdashboard)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D16-brightgreen.svg)](https://nodejs.org)
 

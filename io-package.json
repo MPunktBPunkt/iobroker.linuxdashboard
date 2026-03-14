@@ -1,7 +1,7 @@
 {
   "common": {
     "name": "linuxdashboard",
-    "version": "0.5.0",
+    "version": "0.6.0",
     "news": {
       "0.3.0": {
         "en": "Service manager, package manager, cron editor, file editor, process kill, disk analyzer, backup manager",
@@ -22,6 +22,10 @@
       "0.5.0": {
         "en": "Storage cleanup: APT cache, journal vacuum, old logs, /tmp, npm cache, custom rules",
         "de": "Speicherbereinigung: APT-Cache, Journal-Vacuum, alte Logs, /tmp, npm Cache, eigene Regeln"
+      },
+      "0.6.0": {
+        "en": "ioBroker adapter manager tab, terminal newest-on-top, apt update/upgrade buttons, sudo for all cleanup commands",
+        "de": "ioBroker Adapter-Manager Tab, Terminal neueste oben, apt update/upgrade Buttons, sudo für Bereinigung"
       }
     },
     "title": "Linux Dashboard",
