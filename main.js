@@ -15,7 +15,7 @@ try {
     WebSocketServer = ws.WebSocketServer || ws.Server;
 } catch (_) { WebSocket = null; WebSocketServer = null; }
 
-const ADAPTER_VERSION = '0.4.0';
+const ADAPTER_VERSION = '0.5.0';
 const GITHUB_REPO     = 'MPunktBPunkt/iobroker.linuxdashboard';
 
 // ── CPU diff ──────────────────────────────────────────────────────────────────
@@ -207,6 +207,24 @@ a{color:var(--accent);text-decoration:none}
 .cron-preset{padding:3px 8px;border:1px solid var(--border);border-radius:3px;background:transparent;
   color:var(--muted);font-size:11px;cursor:pointer;font-family:var(--mono)}
 .cron-preset:hover{background:var(--bg3);color:var(--text)}
+/* Bereinigung */
+.clean-rule{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:16px;margin-bottom:12px}
+.clean-rule-header{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.clean-rule-icon{font-size:20px}
+.clean-rule-title{font-weight:600;color:var(--text);font-size:14px}
+.clean-rule-desc{font-size:12px;color:var(--muted);flex:1}
+.clean-preview{background:var(--bg0);border:1px solid var(--border);border-radius:var(--rs);
+  padding:10px 12px;font-family:var(--mono);font-size:12px;color:var(--muted);
+  margin:8px 0;max-height:120px;overflow-y:auto;white-space:pre-wrap;word-break:break-all}
+.clean-preview.has-data{color:var(--yellow)}
+.clean-preview.error{color:var(--red)}
+.clean-result{background:var(--bg0);border:1px solid var(--border);border-radius:var(--rs);
+  padding:8px 12px;font-family:var(--mono);font-size:12px;color:var(--green);
+  margin-top:8px;max-height:100px;overflow-y:auto;white-space:pre-wrap;display:none}
+.clean-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.clean-size-badge{font-family:var(--mono);font-size:12px;color:var(--yellow);font-weight:600;padding:3px 8px;
+  background:var(--bg3);border-radius:var(--rs);display:none}
+.custom-rule-row{display:flex;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border2)}
 /* Storage Analyzer */
 .sa-row{display:grid;grid-template-columns:1fr 80px;align-items:center;gap:8px;
   padding:6px 10px;border-bottom:1px solid var(--border2);cursor:pointer;font-size:12px}
@@ -492,7 +510,8 @@ return `<!DOCTYPE html>
 <!-- ═══ TAB: SYSTEM ═══ -->
 <div id="tab-system" class="tab-panel"><div class="content">
   <div class="sys-subnav">
-    <button class="sys-sub-btn" id="ssb-speicher" onclick="showSysSub('speicher')">&#x1F4BE; Speicher</button>
+    <button class="sys-sub-btn" id="ssb-speicher"   onclick="showSysSub('speicher')">&#x1F4BE; Speicher</button>
+    <button class="sys-sub-btn" id="ssb-bereinigung" onclick="showSysSub('bereinigung')">&#x1F9F9; Bereinigung</button>
     <button class="sys-sub-btn" id="ssb-services" onclick="showSysSub('services')">&#x26AA; Services</button>
     <button class="sys-sub-btn" id="ssb-packages" onclick="showSysSub('packages')">&#x1F4E6; Pakete</button>
     <button class="sys-sub-btn" id="ssb-cron"     onclick="showSysSub('cron')">&#x23F0; Cron Jobs</button>
@@ -535,6 +554,138 @@ return `<!DOCTYPE html>
           </div>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- Bereinigung -->
+  <div class="sys-panel" id="sys-bereinigung">
+    <div class="content" style="padding:0">
+
+      <!-- APT Cache -->
+      <div class="clean-rule">
+        <div class="clean-rule-header">
+          <span class="clean-rule-icon">&#x1F4E6;</span>
+          <div>
+            <div class="clean-rule-title">APT-Cache leeren</div>
+            <div class="clean-rule-desc">Heruntergeladene Paket-Dateien aus /var/cache/apt/archives</div>
+          </div>
+          <span class="clean-size-badge" id="apt-size"></span>
+        </div>
+        <div class="clean-preview" id="apt-preview">Vorschau laden...</div>
+        <div class="clean-result" id="apt-result"></div>
+        <div class="clean-actions">
+          <button class="btn btn-ghost btn-sm" onclick="cleanPreview('apt')">&#x1F50D; Vorschau</button>
+          <button class="btn btn-red btn-sm" onclick="cleanRun('apt')">&#x1F9F9; Bereinigen</button>
+        </div>
+      </div>
+
+      <!-- Systemd Journal -->
+      <div class="clean-rule">
+        <div class="clean-rule-header">
+          <span class="clean-rule-icon">&#x1F4CB;</span>
+          <div>
+            <div class="clean-rule-title">Systemd Journal verkleinern</div>
+            <div class="clean-rule-desc">Journal auf maximale Gr&ouml;&szlig;e oder Alter begrenzen</div>
+          </div>
+          <span class="clean-size-badge" id="journal-size"></span>
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center;flex-wrap:wrap">
+          <label style="font-size:13px;color:var(--muted)">Max. Gr&ouml;&szlig;e:</label>
+          <input type="number" id="journal-maxsize" value="500" min="50" max="10000" style="width:80px"> MB
+          <label style="font-size:13px;color:var(--muted);margin-left:12px">oder max. Alter:</label>
+          <input type="number" id="journal-maxdays" value="30" min="1" max="365" style="width:70px"> Tage
+        </div>
+        <div class="clean-preview" id="journal-preview">Vorschau laden...</div>
+        <div class="clean-result" id="journal-result"></div>
+        <div class="clean-actions">
+          <button class="btn btn-ghost btn-sm" onclick="cleanPreview('journal')">&#x1F50D; Vorschau</button>
+          <button class="btn btn-red btn-sm" onclick="cleanRun('journal')">&#x1F9F9; Bereinigen</button>
+        </div>
+      </div>
+
+      <!-- Alte Log-Dateien -->
+      <div class="clean-rule">
+        <div class="clean-rule-header">
+          <span class="clean-rule-icon">&#x1F5D1;</span>
+          <div>
+            <div class="clean-rule-title">Alte Log-Dateien l&ouml;schen</div>
+            <div class="clean-rule-desc">Komprimierte &amp; rotierte Logs in /var/log (*.gz, *.1, *.2 ...)</div>
+          </div>
+          <span class="clean-size-badge" id="oldlogs-size"></span>
+        </div>
+        <div class="clean-preview" id="oldlogs-preview">Vorschau laden...</div>
+        <div class="clean-result" id="oldlogs-result"></div>
+        <div class="clean-actions">
+          <button class="btn btn-ghost btn-sm" onclick="cleanPreview('oldlogs')">&#x1F50D; Vorschau</button>
+          <button class="btn btn-red btn-sm" onclick="cleanRun('oldlogs')">&#x1F9F9; Bereinigen</button>
+        </div>
+      </div>
+
+      <!-- /tmp leeren -->
+      <div class="clean-rule">
+        <div class="clean-rule-header">
+          <span class="clean-rule-icon">&#x23F3;</span>
+          <div>
+            <div class="clean-rule-title">/tmp leeren</div>
+            <div class="clean-rule-desc">Tempor&auml;re Dateien &auml;lter als N Tage aus /tmp und /var/tmp</div>
+          </div>
+          <span class="clean-size-badge" id="tmp-size"></span>
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
+          <label style="font-size:13px;color:var(--muted)">Dateien &auml;lter als:</label>
+          <input type="number" id="tmp-days" value="7" min="0" max="365" style="width:70px"> Tage
+          <span style="font-size:12px;color:var(--dim)">(0 = alle)</span>
+        </div>
+        <div class="clean-preview" id="tmp-preview">Vorschau laden...</div>
+        <div class="clean-result" id="tmp-result"></div>
+        <div class="clean-actions">
+          <button class="btn btn-ghost btn-sm" onclick="cleanPreview('tmp')">&#x1F50D; Vorschau</button>
+          <button class="btn btn-red btn-sm" onclick="cleanRun('tmp')">&#x1F9F9; Bereinigen</button>
+        </div>
+      </div>
+
+      <!-- npm Cache -->
+      <div class="clean-rule">
+        <div class="clean-rule-header">
+          <span class="clean-rule-icon">&#x1F7E2;</span>
+          <div>
+            <div class="clean-rule-title">npm &amp; Node.js Cache leeren</div>
+            <div class="clean-rule-desc">npm Cache des ioBroker-Users bereinigen</div>
+          </div>
+          <span class="clean-size-badge" id="npm-size"></span>
+        </div>
+        <div class="clean-preview" id="npm-preview">Vorschau laden...</div>
+        <div class="clean-result" id="npm-result"></div>
+        <div class="clean-actions">
+          <button class="btn btn-ghost btn-sm" onclick="cleanPreview('npm')">&#x1F50D; Vorschau</button>
+          <button class="btn btn-red btn-sm" onclick="cleanRun('npm')">&#x1F9F9; Bereinigen</button>
+        </div>
+      </div>
+
+      <!-- Benutzerdefiniert -->
+      <div class="clean-rule">
+        <div class="clean-rule-header">
+          <span class="clean-rule-icon">&#x2699;&#xFE0F;</span>
+          <div>
+            <div class="clean-rule-title">Benutzerdefinierte Bereinigung</div>
+            <div class="clean-rule-desc">Eigene Pfade / Muster definieren und gespeichert ausf&uuml;hren</div>
+          </div>
+        </div>
+        <div id="custom-rules-list" style="margin-bottom:12px"></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <input type="text" id="custom-path" placeholder="Pfad oder Muster (z.B. /opt/iobroker/logs/*.log)" style="flex:1;min-width:200px">
+          <input type="number" id="custom-days" value="0" min="0" max="365" style="width:70px" title="&Auml;lter als N Tage (0 = alle)">
+          <span style="font-size:12px;color:var(--dim);align-self:center">Tage</span>
+          <button class="btn btn-ghost btn-sm" onclick="customRuleAdd()">&#x2B; Hinzuf&uuml;gen</button>
+        </div>
+        <div class="clean-preview" id="custom-preview" style="margin-top:8px"></div>
+        <div class="clean-result" id="custom-result"></div>
+        <div class="clean-actions" style="margin-top:8px">
+          <button class="btn btn-ghost btn-sm" onclick="cleanPreview('custom')">&#x1F50D; Vorschau</button>
+          <button class="btn btn-red btn-sm" onclick="cleanRun('custom')">&#x1F9F9; Alle ausf&uuml;hren</button>
+        </div>
+      </div>
+
     </div>
   </div>
 
@@ -707,6 +858,7 @@ window.showSysSub = function(name) {
   if (btn) btn.classList.add('active');
   _activeSysSub = name;
   if (name === 'speicher') { /* on-demand */ }
+  if (name === 'bereinigung') { loadAllCleanPreviews(); loadCustomRules(); }
   if (name === 'services') loadServices();
   if (name === 'packages') loadInstalledPackages();
   if (name === 'cron') loadCrontab();
@@ -1005,6 +1157,107 @@ async function deleteBackup(name) {
     if (d.ok) loadBackups(); else alert('Fehler: ' + (d.error||'?'));
   } catch(e) { alert('Fehler: ' + e.message); }
 }
+
+// ── Bereinigung ────────────────────────────────────────────────────────────
+let _customRules = JSON.parse(localStorage.getItem('ld_custom_rules') || '[]');
+
+const CLEAN_DEFS = {
+  apt:     { label: 'APT-Cache' },
+  journal: { label: 'Journal' },
+  oldlogs: { label: 'Alte Logs' },
+  tmp:     { label: '/tmp' },
+  npm:     { label: 'npm Cache' },
+};
+
+function cleanParams(type) {
+  if (type === 'journal') return { maxSizeMB: document.getElementById('journal-maxsize').value, maxDays: document.getElementById('journal-maxdays').value };
+  if (type === 'tmp')     return { days: document.getElementById('tmp-days').value };
+  return {};
+}
+
+async function cleanPreview(type) {
+  const previewEl = document.getElementById(type + '-preview');
+  const sizeEl    = document.getElementById(type + '-size');
+  previewEl.textContent = '\u23f3 Berechne...';
+  previewEl.className = 'clean-preview';
+  try {
+    const d = await fetchJSON('/api/clean-preview?type=' + type + '&' + new URLSearchParams(cleanParams(type)));
+    if (d.error) { previewEl.textContent = 'Fehler: ' + d.error; previewEl.className = 'clean-preview error'; return; }
+    previewEl.textContent = d.preview || 'Nichts zu bereinigen';
+    previewEl.className = 'clean-preview' + (d.bytes > 0 ? ' has-data' : '');
+    if (sizeEl) { sizeEl.textContent = d.sizeHuman || ''; sizeEl.style.display = d.bytes > 0 ? '' : 'none'; }
+  } catch(e) { previewEl.textContent = 'Fehler: ' + e.message; previewEl.className = 'clean-preview error'; }
+}
+
+async function cleanRun(type) {
+  const previewEl = document.getElementById(type + '-preview');
+  const resultEl  = document.getElementById(type + '-result');
+  const label = type === 'custom' ? 'Benutzerdefinierte Regeln' : (CLEAN_DEFS[type]?.label || type);
+  if (!confirm(label + ' jetzt bereinigen?')) return;
+  resultEl.style.display = ''; resultEl.textContent = '\u23f3 L\u00e4uft...';
+  previewEl.textContent = ''; previewEl.className = 'clean-preview';
+  try {
+    const params = cleanParams(type);
+    if (type === 'custom') params.rules = JSON.stringify(_customRules);
+    const d = await postJSON('/api/clean-run', { type, ...params });
+    if (d.error) { resultEl.textContent = '\u2717 Fehler: ' + d.error; resultEl.style.color = 'var(--red)'; return; }
+    resultEl.textContent = d.output || '\u2714 Fertig';
+    resultEl.style.color = 'var(--green)';
+    if (type !== 'custom') cleanPreview(type);
+  } catch(e) { resultEl.textContent = 'Fehler: ' + e.message; resultEl.style.color = 'var(--red)'; }
+}
+
+function loadAllCleanPreviews() {
+  Object.keys(CLEAN_DEFS).forEach(type => cleanPreview(type));
+}
+
+// Custom rules
+function loadCustomRules() {
+  _customRules = JSON.parse(localStorage.getItem('ld_custom_rules') || '[]');
+  renderCustomRules();
+}
+
+function renderCustomRules() {
+  const el = document.getElementById('custom-rules-list');
+  if (!_customRules.length) { el.innerHTML = '<div style="color:var(--dim);font-size:12px;padding:4px 0">Noch keine Regeln definiert</div>'; return; }
+  el.innerHTML = _customRules.map((r, i) =>
+    '<div class="custom-rule-row">' +
+    '<span style="font-family:var(--mono);font-size:12px;color:var(--text);flex:1">' + esc(r.path) + '</span>' +
+    (r.days > 0 ? '<span style="font-size:11px;color:var(--muted);margin-right:8px">&auml;lter als ' + r.days + ' Tage</span>' : '') +
+    '<button class="btn btn-ghost btn-sm" onclick="customRulePreview(' + i + ')">&#x1F50D;</button>' +
+    '<button class="btn btn-red btn-sm" onclick="customRuleDelete(' + i + ')">&#x2715;</button>' +
+    '</div>'
+  ).join('');
+}
+
+function customRuleAdd() {
+  const pathVal = document.getElementById('custom-path').value.trim();
+  const days    = parseInt(document.getElementById('custom-days').value || '0', 10);
+  if (!pathVal) { alert('Bitte einen Pfad eingeben'); return; }
+  _customRules.push({ path: pathVal, days });
+  localStorage.setItem('ld_custom_rules', JSON.stringify(_customRules));
+  document.getElementById('custom-path').value = '';
+  renderCustomRules();
+}
+
+function customRuleDelete(i) {
+  _customRules.splice(i, 1);
+  localStorage.setItem('ld_custom_rules', JSON.stringify(_customRules));
+  renderCustomRules();
+}
+
+async function customRulePreview(i) {
+  const rule = _customRules[i];
+  const el   = document.getElementById('custom-preview');
+  el.textContent = '\u23f3 Berechne ' + rule.path + '...';
+  el.className = 'clean-preview';
+  try {
+    const d = await fetchJSON('/api/clean-preview?type=custom-single&path=' + encodeURIComponent(rule.path) + '&days=' + rule.days);
+    el.textContent = d.preview || 'Nichts gefunden';
+    el.className = 'clean-preview' + (d.bytes > 0 ? ' has-data' : '');
+  } catch(e) { el.textContent = 'Fehler: ' + e.message; el.className = 'clean-preview error'; }
+}
+
 
 // ── Storage Analyzer ───────────────────────────────────────────────────────
 let _saDirStack = [];
@@ -1548,6 +1801,13 @@ class LinuxDashboard extends utils.Adapter {
             catch (e) { return this._json(res, { ok: false, error: e.message }); }
         }
 
+        // ── Bereinigung
+        if (p === '/api/clean-preview' && m === 'GET') return this._json(res, await this._cleanPreview(url.searchParams));
+        if (p === '/api/clean-run'     && m === 'POST') {
+            const body = JSON.parse(await this._readBody(req));
+            return this._json(res, await this._cleanRun(body));
+        }
+
         // ── Storage Analyzer
         if (p === '/api/storage-analyze' && m === 'GET') {
             const sp      = this._safePath(url.searchParams.get('path') || '/', root);
@@ -1937,6 +2197,97 @@ class LinuxDashboard extends utils.Adapter {
             if (found) return i;
         }
         return -1;
+    }
+
+    // ── Bereinigung ──────────────────────────────────────────────────────────
+    async _cleanPreview(params) {
+        const type = params.get('type') || '';
+        try {
+            if (type === 'apt') {
+                const size = await this._cmdOut("du -sh /var/cache/apt/archives/ 2>/dev/null | cut -f1");
+                const bytes = await this._cmdOut("du -sb /var/cache/apt/archives/ 2>/dev/null | cut -f1");
+                const list  = await this._cmdOut("ls /var/cache/apt/archives/*.deb 2>/dev/null | head -20 || echo '(keine .deb Dateien)'");
+                return { preview: `Gr\u00f6\u00dfe: ${size.trim()}\n\n${list.trim()}`, bytes: parseInt(bytes) || 0, sizeHuman: size.trim() };
+            }
+            if (type === 'journal') {
+                const cur  = await this._cmdOut("journalctl --disk-usage 2>/dev/null || echo 'N/A'");
+                const files = await this._cmdOut("find /var/log/journal -type f 2>/dev/null | wc -l");
+                const bytes = await this._cmdOut("du -sb /var/log/journal 2>/dev/null | cut -f1 || echo 0");
+                return { preview: cur.trim() + `\n${files.trim()} Journal-Dateien`, bytes: parseInt(bytes) || 0, sizeHuman: (await this._cmdOut("du -sh /var/log/journal 2>/dev/null | cut -f1")).trim() };
+            }
+            if (type === 'oldlogs') {
+                const list  = await this._cmdOut("find /var/log -type f \\( -name '*.gz' -o -name '*.1' -o -name '*.2' -o -name '*.3' -o -name '*.4' \\) 2>/dev/null | head -30");
+                const bytes = await this._cmdOut("find /var/log -type f \\( -name '*.gz' -o -name '*.1' -o -name '*.2' -o -name '*.3' -o -name '*.4' \\) -printf '%s\\n' 2>/dev/null | awk '{s+=$1}END{print s+0}'");
+                const count = await this._cmdOut("find /var/log -type f \\( -name '*.gz' -o -name '*.1' -o -name '*.2' -o -name '*.3' -o -name '*.4' \\) 2>/dev/null | wc -l");
+                return { preview: `${count.trim()} Dateien:\n${list.trim() || '(keine gefunden)'}`, bytes: parseInt(bytes) || 0, sizeHuman: this._fmtBytes(parseInt(bytes) || 0) };
+            }
+            if (type === 'tmp') {
+                const days  = parseInt(params.get('days') || '7', 10);
+                const mtime = days > 0 ? `-mtime +${days}` : '';
+                const list  = await this._cmdOut(`find /tmp /var/tmp -type f ${mtime} 2>/dev/null | head -30`);
+                const bytes = await this._cmdOut(`find /tmp /var/tmp -type f ${mtime} -printf '%s\\n' 2>/dev/null | awk '{s+=$1}END{print s+0}'`);
+                const count = await this._cmdOut(`find /tmp /var/tmp -type f ${mtime} 2>/dev/null | wc -l`);
+                return { preview: `${count.trim()} Dateien${days > 0 ? ' \u00e4lter als ' + days + ' Tage' : ''}:\n${list.trim() || '(keine)'}`, bytes: parseInt(bytes) || 0, sizeHuman: this._fmtBytes(parseInt(bytes) || 0) };
+            }
+            if (type === 'npm') {
+                const dir   = await this._cmdOut("npm config get cache 2>/dev/null || echo ~/.npm");
+                const bytes = await this._cmdOut(`du -sb ${dir.trim()} 2>/dev/null | cut -f1 || echo 0`);
+                return { preview: `npm Cache: ${dir.trim()}\nGr\u00f6\u00dfe: ${this._fmtBytes(parseInt(bytes) || 0)}`, bytes: parseInt(bytes) || 0, sizeHuman: this._fmtBytes(parseInt(bytes) || 0) };
+            }
+            if (type === 'custom-single') {
+                const p    = params.get('path') || '';
+                const days = parseInt(params.get('days') || '0', 10);
+                if (!p) return { preview: 'Kein Pfad angegeben', bytes: 0 };
+                const mtime = days > 0 ? `-mtime +${days}` : '';
+                const list  = await this._cmdOut(`find ${p} -type f ${mtime} 2>/dev/null | head -20 || ls -lh ${p} 2>/dev/null | head -20`);
+                const bytes = await this._cmdOut(`find ${p} -type f ${mtime} -printf '%s\\n' 2>/dev/null | awk '{s+=$1}END{print s+0}'`);
+                return { preview: list.trim() || '(nichts gefunden)', bytes: parseInt(bytes) || 0, sizeHuman: this._fmtBytes(parseInt(bytes) || 0) };
+            }
+            return { error: 'Unbekannter Typ: ' + type };
+        } catch (e) { return { error: e.message }; }
+    }
+
+    async _cleanRun(params) {
+        const { type } = params;
+        try {
+            let cmd = '';
+            if (type === 'apt') {
+                cmd = 'apt-get clean 2>&1 && apt-get autoremove -y 2>&1 && echo "\u2714 APT-Cache geleert"';
+            } else if (type === 'journal') {
+                const mb   = parseInt(params.maxSizeMB || '500', 10);
+                const days = parseInt(params.maxDays   || '30',  10);
+                cmd = `journalctl --vacuum-size=${mb}M 2>&1 && journalctl --vacuum-time=${days}d 2>&1`;
+            } else if (type === 'oldlogs') {
+                cmd = "find /var/log -type f \\( -name '*.gz' -o -name '*.1' -o -name '*.2' -o -name '*.3' -o -name '*.4' \\) -delete 2>&1 && echo '\u2714 Alte Log-Dateien gel\u00f6scht'";
+            } else if (type === 'tmp') {
+                const days  = parseInt(params.days || '7', 10);
+                const mtime = days > 0 ? `-mtime +${days}` : '';
+                cmd = `find /tmp /var/tmp -type f ${mtime} -delete 2>&1 && echo '\u2714 /tmp bereinigt'`;
+            } else if (type === 'npm') {
+                cmd = 'npm cache clean --force 2>&1 && echo "\u2714 npm Cache geleert"';
+            } else if (type === 'custom') {
+                const rules = JSON.parse(params.rules || '[]');
+                if (!rules.length) return { output: 'Keine Regeln definiert' };
+                const cmds = rules.map(r => {
+                    const mtime = r.days > 0 ? `-mtime +${r.days}` : '';
+                    return `echo "--- ${r.path} ---" && find ${r.path} -type f ${mtime} -delete 2>&1 || rm -f ${r.path} 2>&1`;
+                });
+                cmd = cmds.join(' && ');
+            } else {
+                return { error: 'Unbekannter Typ' };
+            }
+            this._addLog('INFO', `Bereinigung: ${type}`);
+            const result = await this._cmdOut(cmd, 60000);
+            return { ok: true, output: result.trim() || '\u2714 Fertig (keine Ausgabe)' };
+        } catch (e) { return { error: e.message }; }
+    }
+
+    _cmdOut(cmd, timeout = 15000) {
+        return new Promise((resolve, reject) => {
+            exec(cmd, { timeout, maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
+                resolve((stdout || '') + (stderr || ''));
+            });
+        });
     }
 
     // ── Storage Analyzer ──────────────────────────────────────────────────────

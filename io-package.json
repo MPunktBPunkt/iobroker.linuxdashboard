@@ -1,7 +1,7 @@
 {
   "common": {
     "name": "linuxdashboard",
-    "version": "0.4.0",
+    "version": "0.5.0",
     "news": {
       "0.3.0": {
         "en": "Service manager, package manager, cron editor, file editor, process kill, disk analyzer, backup manager",
@@ -18,6 +18,10 @@
       "0.4.0": {
         "en": "Storage analyzer: find largest files and folders, drill-down navigation",
         "de": "Speicher-Analyse: größte Dateien und Ordner finden, Drill-Down Navigation"
+      },
+      "0.5.0": {
+        "en": "Storage cleanup: APT cache, journal vacuum, old logs, /tmp, npm cache, custom rules",
+        "de": "Speicherbereinigung: APT-Cache, Journal-Vacuum, alte Logs, /tmp, npm Cache, eigene Regeln"
       }
     },
     "title": "Linux Dashboard",

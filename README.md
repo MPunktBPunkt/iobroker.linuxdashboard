@@ -1,6 +1,6 @@
 # ioBroker Linux Dashboard Adapter
 
-[![Version](https://img.shields.io/badge/version-0.4.0-blue.svg)](https://github.com/MPunktBPunkt/iobroker.linuxdashboard)
+[![Version](https://img.shields.io/badge/version-0.5.0-blue.svg)](https://github.com/MPunktBPunkt/iobroker.linuxdashboard)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D16-brightgreen.svg)](https://nodejs.org)
 
@@ -14,6 +14,7 @@ CPU, RAM, Festplatten, Prozesse, Dateimanager, Log-Viewer und Terminal, alles an
 * 📊 **System-Dashboard** – CPU, RAM, Swap-Gauges, Festplatten, Netzwerk-Interfaces, Prozesse live
 * 📁 **Dateimanager** – Verzeichnisse browsen, Dateien bearbeiten, Download, Upload per Drag & Drop
 * 🔍 **Speicher-Analyse** – Größte Dateien & Ordner finden, Drill-Down, direkt im Dateimanager öffnen
+* 🧹 **Speicher-Bereinigung** – APT-Cache, Journal, alte Logs, /tmp, npm Cache, benutzerdefinierte Regeln
 * 🗂️ **Datei-Editor** – Konfigurationsdateien direkt im Browser bearbeiten und speichern
 * 💀 **Prozess-Manager** – Kill (SIGTERM) und Force-Kill (SIGKILL) per Klick
 * 📋 **Log-Viewer** – journalctl / syslog, Regex-Filter, Export
