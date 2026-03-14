@@ -1,1 +1,57 @@
-
+{
+  "type": "panel",
+  "title": "Linux Dashboard Konfiguration",
+  "items": {
+    "port": {
+      "type": "number",
+      "label": "HTTP Port",
+      "min": 1024,
+      "max": 65535,
+      "default": 8090,
+      "help": "Port auf dem das Web-UI erreichbar ist"
+    },
+    "metricsInterval": {
+      "type": "number",
+      "label": "Metriken-Intervall (Sekunden)",
+      "min": 1,
+      "max": 60,
+      "default": 5
+    },
+    "logBuffer": {
+      "type": "number",
+      "label": "Log-Puffer (Einträge)",
+      "min": 50,
+      "max": 5000,
+      "default": 500
+    },
+    "filemanagerRoot": {
+      "type": "text",
+      "label": "Dateimanager Wurzelverzeichnis",
+      "default": "/",
+      "help": "Oberster Pfad im Dateimanager (z.B. / oder /home)"
+    },
+    "backupDir": {
+      "type": "text",
+      "label": "Backup-Verzeichnis",
+      "default": "/tmp/iobroker-backups",
+      "help": "Speicherort für tar.gz Backups"
+    },
+    "allowCommandExecution": {
+      "type": "checkbox",
+      "label": "Kommando-Ausführung erlauben",
+      "default": true,
+      "help": "Terminal und Schnellbefehle ein-/ausschalten"
+    },
+    "commandWhitelist": {
+      "type": "text",
+      "label": "Befehls-Whitelist (kommagetrennt, leer = alle erlaubt)",
+      "default": "",
+      "help": "z.B.: ls,df,free,ps,systemctl"
+    },
+    "verboseLogging": {
+      "type": "checkbox",
+      "label": "Ausführliches Logging",
+      "default": true
+    }
+  }
+}
