@@ -795,10 +795,10 @@ function fmFilterFiles(q) { renderFiles(q ? allFiles.filter(e => e.name.toLowerC
 function fmClick(el, name, isDir) {
   document.querySelectorAll('.fm-row').forEach(r => r.classList.remove('selected'));
   el.classList.add('selected'); selectedFile = name;
-  if (isDir) fmLoad((currentPath.replace(/\/$/,'') + '/' + name).replace('//','/')); else fmOpenFile(name);
+  if (isDir) fmLoad((currentPath.replace(/\\/$/,'') + '/' + name).replace('//','/')); else fmOpenFile(name);
 }
 async function fmOpenFile(name) {
-  const fp = (currentPath.replace(/\/$/,'') + '/' + name).replace('//','/');\
+  const fp = (currentPath.replace(/\\/$/,'') + '/' + name).replace('//','/');\
   document.getElementById('fm-edit-name').textContent = name;
   document.getElementById('fm-edit-area').classList.remove('hidden');
   document.getElementById('fm-preview-ro').textContent = 'Lade...';
@@ -830,7 +830,7 @@ function fmToggleEdit() {
 }
 async function fmSaveFile() {
   if (!selectedFile) return;
-  const fp = (currentPath.replace(/\/$/,'') + '/' + selectedFile).replace('//','/');\
+  const fp = (currentPath.replace(/\\/$/,'') + '/' + selectedFile).replace('//','/');\
   const content = document.getElementById('fm-textarea').value;
   try {
     const d = await postJSON('/api/file-write', { path: fp, content });
@@ -843,18 +843,18 @@ async function fmSaveFile() {
 function fmCloseEdit() { document.getElementById('fm-edit-area').classList.add('hidden'); _editMode = false; }
 function fmDownload() {
   if (!selectedFile) return;
-  window.open('/api/download?path=' + encodeURIComponent((currentPath.replace(/\//,'/') + '/' + selectedFile).replace('//','/')))\
+  window.open('/api/download?path=' + encodeURIComponent((currentPath + '/' + selectedFile).replace(/\\/\\//g, '/')))\
 ;
 }
 function fmGoUp() {
   if (currentPath === '/') return;
-  const parts = currentPath.replace(/\/$/,'').split('/'); parts.pop();
+  const parts = currentPath.replace(/\\/$/,'').split('/'); parts.pop();
   fmLoad(parts.join('/') || '/');
 }
 function fmRefresh() { fmLoad(currentPath); }
 async function fmNewFolder() {
   const name = prompt('Ordnername:'); if (!name) return;
-  const fp = (currentPath.replace(/\/$/,'') + '/' + name).replace('//','/');\
+  const fp = (currentPath.replace(/\\/$/,'') + '/' + name).replace('//','/');\
   const d = await postJSON('/api/mkdir', { path: fp });
   if (d.ok) fmRefresh(); else alert('Fehler: ' + (d.error||'?'));
 }
@@ -894,7 +894,7 @@ function fmUploadOne(file, queue) {
     const item = document.createElement('div'); item.className = 'upload-item'; item.id = id;
     item.innerHTML = \`<div class="upload-item-header"><span class="upload-item-name">\${esc(file.name)}</span><span class="upload-item-status uploading" id="\${id}-s">0%</span></div><div class="upload-item-bar"><div class="upload-item-fill" id="\${id}-f" style="width:0%"></div></div>\`;
     queue.appendChild(item);
-    const fp = (currentPath.replace(/\/$/,'') + '/' + file.name).replace('//','/');\
+    const fp = (currentPath.replace(/\\/$/,'') + '/' + file.name).replace('//','/');\
     const fd = new FormData(); fd.append('path', fp); fd.append('file', file, file.name);
     const xhr = new XMLHttpRequest(); xhr.open('POST', '/api/upload');
     xhr.upload.onprogress = e => { if (e.lengthComputable) { const p = Math.round(e.loaded/e.total*100); document.getElementById(id+'-f').style.width=p+'%'; document.getElementById(id+'-s').textContent=p+'%'; }};
@@ -965,7 +965,7 @@ function renderServices(svcs) {
   const tbody = document.getElementById('svc-tbody');
   if (!svcs.length) { tbody.innerHTML = '<tr><td colspan="5" style="color:var(--dim);padding:16px">Keine Services gefunden</td></tr>'; return; }
   tbody.innerHTML = svcs.map(s => {
-    const cls = 'svc-status-' + (s.active||'').toLowerCase().replace(/\s.*/,'');
+    const cls = 'svc-status-' + (s.active||'').toLowerCase()  .replace(/\\s.*/,'');
     return \`<tr>
       <td style="font-family:var(--mono);color:var(--accent)">\${esc(s.name)}</td>
       <td><span class="\${cls}">\${esc(s.active||'-')}</span></td>
@@ -985,7 +985,7 @@ async function serviceAction(name, action) {
   out.textContent = action + ' ' + name + ' ...';
   try {
     const d = await postJSON('/api/service', { name, action });
-    out.textContent = (d.stdout||'') + (d.stderr ? '\n[stderr]: ' + d.stderr : '') || '\u2714 Fertig';
+    out.textContent = (d.stdout||'') + (d.stderr ? '\\n[stderr]: ' + d.stderr : '') || '\u2714 Fertig';
     if (action !== 'status') setTimeout(loadServices, 1500);
   } catch(e) { out.textContent = 'Fehler: ' + e.message; }
 }
@@ -1025,7 +1025,7 @@ async function aptAction(pkgName, action) {
   out.textContent = 'Starte apt ' + action + ' ' + pkgName + ' ...';
   try {
     const d = await postJSON('/api/apt', { package: pkgName, action });
-    out.textContent = (d.stdout||'') + (d.stderr ? '\n[stderr]: ' + d.stderr : '') || d.error || 'Fertig';
+    out.textContent = (d.stdout||'') + (d.stderr ? '\\n[stderr]: ' + d.stderr : '') || d.error || 'Fertig';
   } catch(e) { out.textContent = 'Fehler: ' + e.message; }
 }
 async function aptUpdate() {
@@ -1033,7 +1033,7 @@ async function aptUpdate() {
   out.textContent = 'Starte apt update...';
   try {
     const d = await postJSON('/api/apt', { action: 'update' });
-    out.textContent = (d.stdout||'') + (d.stderr ? '\n[stderr]: ' + d.stderr : '') || d.error || 'Fertig';
+    out.textContent = (d.stdout||'') + (d.stderr ? '\\n[stderr]: ' + d.stderr : '') || d.error || 'Fertig';
   } catch(e) { out.textContent = 'Fehler: ' + e.message; }
 }
 
@@ -1122,7 +1122,7 @@ function applyLogFilter() {
   if (document.getElementById('log-autoscroll').checked) box.scrollTop = box.scrollHeight;
 }
 function exportLogs() {
-  const blob = new Blob([_rawLogs.join('\n')], {type:'text/plain'});
+  const blob = new Blob([_rawLogs.join('\\n')], {type:'text/plain'});
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
   a.download = 'linuxdashboard-log-' + new Date().toISOString().slice(0,19).replace(/:/g,'-') + '.txt'; a.click();
 }
@@ -1138,16 +1138,16 @@ async function termRun() {
   const input = document.getElementById('term-cmd'); const cmd = input.value.trim(); if (!cmd) return;
   _cmdHistory.unshift(cmd); _histIdx = -1; input.value = '';
   const out = document.getElementById('term-output');
-  out.textContent += '\n' + document.getElementById('term-prompt').textContent + ' ' + cmd + '\n';
+  out.textContent += '\\n' + document.getElementById('term-prompt').textContent + ' ' + cmd + '\\n';
   out.scrollTop = out.scrollHeight;
   try {
     const d = await postJSON('/api/exec', { cmd });
-    out.textContent += (d.stdout||'') + (d.stderr ? '[stderr]: ' + d.stderr : '') + '\n';
-  } catch(e) { out.textContent += 'Fehler: ' + e.message + '\n'; }
+    out.textContent += (d.stdout||'') + (d.stderr ? '[stderr]: ' + d.stderr : '') + '\\n';
+  } catch(e) { out.textContent += 'Fehler: ' + e.message + '\\n'; }
   out.scrollTop = out.scrollHeight;
 }
 function runQuick(cmd) { showTab('system'); showSysSub('terminal'); document.getElementById('term-cmd').value = cmd; setTimeout(termRun, 150); }
-function termClear() { document.getElementById('term-output').textContent = 'Linux Dashboard Terminal bereit.\n'; }
+function termClear() { document.getElementById('term-output').textContent = 'Linux Dashboard Terminal bereit.\\n'; }
 
 // ── System Info ────────────────────────────────────────────────────────────
 async function loadSysInfo() {
