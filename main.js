@@ -15,7 +15,7 @@ try {
     WebSocketServer = ws.WebSocketServer || ws.Server;
 } catch (_) { WebSocket = null; WebSocketServer = null; }
 
-const ADAPTER_VERSION = '0.3.0';
+const ADAPTER_VERSION = '0.4.0';
 const GITHUB_REPO     = 'MPunktBPunkt/iobroker.linuxdashboard';
 
 // ── CPU diff ──────────────────────────────────────────────────────────────────
@@ -207,6 +207,24 @@ a{color:var(--accent);text-decoration:none}
 .cron-preset{padding:3px 8px;border:1px solid var(--border);border-radius:3px;background:transparent;
   color:var(--muted);font-size:11px;cursor:pointer;font-family:var(--mono)}
 .cron-preset:hover{background:var(--bg3);color:var(--text)}
+/* Storage Analyzer */
+.sa-row{display:grid;grid-template-columns:1fr 80px;align-items:center;gap:8px;
+  padding:6px 10px;border-bottom:1px solid var(--border2);cursor:pointer;font-size:12px}
+.sa-row:hover{background:var(--bg3)}
+.sa-name{font-family:var(--mono);color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sa-name.sa-link{color:var(--accent)}
+.sa-size-col{font-family:var(--mono);text-align:right;font-weight:600}
+.sa-bar{height:3px;background:var(--bg3);border-radius:2px;overflow:hidden;margin-top:3px}
+.sa-bar-fill{height:100%;border-radius:2px}
+.sa-panel-hdr{padding:7px 10px;font-size:11px;color:var(--dim);text-transform:uppercase;
+  letter-spacing:.6px;border-bottom:1px solid var(--border);background:var(--bg1);font-weight:600;
+  display:flex;justify-content:space-between}
+.sa-scroll{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);
+  overflow:hidden;max-height:460px;overflow-y:auto}
+.sa-placeholder{padding:32px;text-align:center;color:var(--dim);font-size:13px}
+.sa-spin{padding:20px;text-align:center;color:var(--muted);font-size:13px}
+.sa-path-chip{font-family:var(--mono);font-size:11px;color:var(--muted);
+  background:var(--bg3);padding:3px 9px;border-radius:var(--rs);display:none}
 /* Backup Manager */
 .backup-row{display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--border2)}
 .backup-name{font-family:var(--mono);font-size:13px;color:var(--text);flex:1}
@@ -474,11 +492,50 @@ return `<!DOCTYPE html>
 <!-- ═══ TAB: SYSTEM ═══ -->
 <div id="tab-system" class="tab-panel"><div class="content">
   <div class="sys-subnav">
+    <button class="sys-sub-btn" id="ssb-speicher" onclick="showSysSub('speicher')">&#x1F4BE; Speicher</button>
     <button class="sys-sub-btn" id="ssb-services" onclick="showSysSub('services')">&#x26AA; Services</button>
     <button class="sys-sub-btn" id="ssb-packages" onclick="showSysSub('packages')">&#x1F4E6; Pakete</button>
     <button class="sys-sub-btn" id="ssb-cron"     onclick="showSysSub('cron')">&#x23F0; Cron Jobs</button>
     <button class="sys-sub-btn" id="ssb-terminal" onclick="showSysSub('terminal')">&#x1F4BB; Terminal</button>
     <button class="sys-sub-btn" id="ssb-update"   onclick="showSysSub('update')">&#x1F504; Update</button>
+  </div>
+
+  <!-- Speicher-Analyse -->
+  <div class="sys-panel" id="sys-speicher">
+    <div class="card">
+      <div class="card-title"><span class="dot" style="background:var(--red)"></span>Speicher-Analyse
+        <span style="color:var(--dim);font-size:11px;font-weight:400;margin-left:8px">Gr&ouml;&szlig;te Dateien &amp; Ordner finden</span>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:16px">
+        <input type="text" id="sa-path" value="/" style="flex:1;max-width:380px" placeholder="Startpfad...">
+        <input type="number" id="sa-limit" value="25" min="5" max="200" style="width:70px" title="Max. Ergebnisse">
+        <button class="btn btn-red" onclick="runStorageAnalysis()">&#x1F50D; Analyse starten</button>
+        <span id="sa-status" style="font-size:12px;color:var(--muted)"></span>
+      </div>
+      <div class="grid grid-2" style="gap:16px">
+        <div>
+          <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px;display:flex;align-items:center;gap:8px">
+            <span style="color:var(--red)">&#x1F4C4;</span>Gr&ouml;&szlig;te Dateien
+            <span id="sa-files-count" style="font-size:11px;color:var(--dim);font-weight:400"></span>
+            <span style="font-size:11px;color:var(--dim);font-weight:400;margin-left:4px">Klick &rarr; im Dateimanager &ouml;ffnen</span>
+          </div>
+          <div class="sa-scroll" id="sa-files-panel">
+            <div class="sa-placeholder">Analyse starten</div>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px;display:flex;align-items:center;gap:8px">
+            <span style="color:var(--yellow)">&#x1F4C1;</span>Gr&ouml;&szlig;te Ordner
+            <span id="sa-dirs-count" style="font-size:11px;color:var(--dim);font-weight:400"></span>
+            <button class="btn btn-ghost btn-sm" id="sa-up-btn" onclick="saDirUp()" style="margin-left:auto;display:none">&#x2191; Hoch</button>
+          </div>
+          <div id="sa-path-chip" class="sa-path-chip" style="margin-bottom:8px"></div>
+          <div class="sa-scroll" id="sa-dirs-panel">
+            <div class="sa-placeholder">Analyse starten</div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- Service Manager -->
@@ -649,6 +706,7 @@ window.showSysSub = function(name) {
   const btn = document.getElementById('ssb-' + name);
   if (btn) btn.classList.add('active');
   _activeSysSub = name;
+  if (name === 'speicher') { /* on-demand */ }
   if (name === 'services') loadServices();
   if (name === 'packages') loadInstalledPackages();
   if (name === 'cron') loadCrontab();
@@ -947,6 +1005,116 @@ async function deleteBackup(name) {
     if (d.ok) loadBackups(); else alert('Fehler: ' + (d.error||'?'));
   } catch(e) { alert('Fehler: ' + e.message); }
 }
+
+// ── Storage Analyzer ───────────────────────────────────────────────────────
+let _saDirStack = [];
+
+async function runStorageAnalysis() {
+  const p      = (document.getElementById('sa-path').value || '/').trim();
+  const limit  = parseInt(document.getElementById('sa-limit').value || '25', 10);
+  const status = document.getElementById('sa-status');
+  _saDirStack  = [p];
+  document.getElementById('sa-up-btn').style.display = 'none';
+  document.getElementById('sa-path-chip').style.display = 'none';
+  status.textContent = 'L\u00e4uft \u2014 bitte warten...';
+  status.style.color = 'var(--muted)';
+  document.getElementById('sa-files-panel').innerHTML = '<div class="sa-spin">\u23f3 Suche gr\u00f6\u00dfte Dateien...</div>';
+  document.getElementById('sa-dirs-panel').innerHTML  = '<div class="sa-spin">\u23f3 Berechne Ordnergr\u00f6\u00dfen...</div>';
+  try {
+    const d = await fetchJSON('/api/storage-analyze?path=' + encodeURIComponent(p) + '&limit=' + limit);
+    if (d.error) {
+      status.textContent = 'Fehler: ' + d.error; status.style.color = 'var(--red)';
+      document.getElementById('sa-files-panel').innerHTML = '<div class="sa-placeholder" style="color:var(--red)">' + esc(d.error) + '</div>';
+      document.getElementById('sa-dirs-panel').innerHTML  = '';
+      return;
+    }
+    status.textContent = '\u2714 Fertig' + (d.duration ? ' \u2014 ' + d.duration + 's' : '');
+    status.style.color = 'var(--green)';
+    document.getElementById('sa-files-count').textContent = d.files.length ? '(' + d.files.length + ')' : '';
+    renderSaFiles(d.files || []);
+    renderSaDirs(d.dirs || [], p, false);
+  } catch(e) {
+    status.textContent = 'Fehler: ' + e.message; status.style.color = 'var(--red)';
+    document.getElementById('sa-files-panel').innerHTML = '<div class="sa-placeholder" style="color:var(--red)">' + esc(e.message) + '</div>';
+  }
+}
+
+function renderSaFiles(files) {
+  const el = document.getElementById('sa-files-panel');
+  if (!files.length) { el.innerHTML = '<div class="sa-placeholder">Keine Dateien gefunden</div>'; return; }
+  const maxB = Math.max(...files.map(f => f.bytes), 1);
+  let html = '<div class="sa-panel-hdr"><span>Datei</span><span>Gr\u00f6\u00dfe</span></div>';
+  files.forEach(f => {
+    const pct = Math.round(f.bytes / maxB * 100);
+    const col = pct > 80 ? 'var(--red)' : pct > 50 ? 'var(--yellow)' : 'var(--accent)';
+    const dir = f.path.lastIndexOf('/') > 0 ? f.path.slice(0, f.path.lastIndexOf('/')) : '/';
+    html += '<div class="sa-row sa-link" data-d="' + esc(dir) + '" onclick="saOpenDir(this.dataset.d)" title="\u00d6ffne Ordner: ' + esc(dir) + '">' +
+      '<div><div class="sa-name sa-link" title="' + esc(f.path) + '">' + esc(f.path) + '</div>' +
+      '<div class="sa-bar"><div class="sa-bar-fill" style="width:' + pct + '%;background:' + col + '"></div></div></div>' +
+      '<div class="sa-size-col" style="color:' + col + '">' + esc(f.size) + '</div></div>';
+  });
+  el.innerHTML = html;
+}
+
+function renderSaDirs(dirs, currentPath, isDrillDown) {
+  const el    = document.getElementById('sa-dirs-panel');
+  const chip  = document.getElementById('sa-path-chip');
+  const upBtn = document.getElementById('sa-up-btn');
+  document.getElementById('sa-dirs-count').textContent = dirs.length ? '(' + dirs.length + ')' : '';
+  if (isDrillDown) {
+    chip.textContent = currentPath; chip.style.display = 'inline-block';
+    upBtn.style.display = '';
+  }
+  if (!dirs.length) { el.innerHTML = '<div class="sa-placeholder">Keine Unterordner gefunden</div>'; return; }
+  const maxB = Math.max(...dirs.map(d => d.bytes), 1);
+  let html = '<div class="sa-panel-hdr"><span>Ordner</span><span>Gr\u00f6\u00dfe</span></div>';
+  dirs.forEach(d => {
+    const pct = Math.round(d.bytes / maxB * 100);
+    const col = pct > 80 ? 'var(--red)' : pct > 50 ? 'var(--yellow)' : 'var(--green)';
+    html += '<div class="sa-row" data-d="' + esc(d.path) + '" onclick="saDrillDown(this.dataset.d)" title="Reinbohren: ' + esc(d.path) + '">' +
+      '<div><div class="sa-name sa-link">\uD83D\uDCC1 ' + esc(d.name) + '</div>' +
+      '<div class="sa-bar"><div class="sa-bar-fill" style="width:' + pct + '%;background:' + col + '"></div></div></div>' +
+      '<div class="sa-size-col" style="color:' + col + '">' + esc(d.size) + '</div></div>';
+  });
+  el.innerHTML = html;
+}
+
+async function saDrillDown(dirPath) {
+  _saDirStack.push(dirPath);
+  const limit = parseInt(document.getElementById('sa-limit').value || '25', 10);
+  document.getElementById('sa-dirs-panel').innerHTML = '<div class="sa-spin">\u23f3 Berechne...</div>';
+  try {
+    const d = await fetchJSON('/api/storage-analyze?path=' + encodeURIComponent(dirPath) + '&limit=' + limit + '&dirsonly=1');
+    renderSaDirs(d.dirs || [], dirPath, true);
+  } catch(e) {
+    document.getElementById('sa-dirs-panel').innerHTML = '<div class="sa-placeholder" style="color:var(--red)">' + esc(e.message) + '</div>';
+  }
+}
+
+async function saDirUp() {
+  if (_saDirStack.length <= 1) return;
+  _saDirStack.pop();
+  const parent = _saDirStack[_saDirStack.length - 1];
+  const isRoot = _saDirStack.length <= 1;
+  const limit  = parseInt(document.getElementById('sa-limit').value || '25', 10);
+  document.getElementById('sa-dirs-panel').innerHTML = '<div class="sa-spin">\u23f3 Berechne...</div>';
+  try {
+    const d = await fetchJSON('/api/storage-analyze?path=' + encodeURIComponent(parent) + '&limit=' + limit + '&dirsonly=1');
+    renderSaDirs(d.dirs || [], parent, !isRoot);
+    if (isRoot) {
+      document.getElementById('sa-up-btn').style.display = 'none';
+      document.getElementById('sa-path-chip').style.display = 'none';
+    }
+  } catch(e) {
+    document.getElementById('sa-dirs-panel').innerHTML = '<div class="sa-placeholder" style="color:var(--red)">' + esc(e.message) + '</div>';
+  }
+}
+
+function saOpenDir(dirPath) {
+  showTab('nodes');
+  setTimeout(() => fmLoad(dirPath || '/'), 150);
+}
+
 
 // ── Service Manager ────────────────────────────────────────────────────────
 let _allServices = [];
@@ -1380,6 +1548,15 @@ class LinuxDashboard extends utils.Adapter {
             catch (e) { return this._json(res, { ok: false, error: e.message }); }
         }
 
+        // ── Storage Analyzer
+        if (p === '/api/storage-analyze' && m === 'GET') {
+            const sp      = this._safePath(url.searchParams.get('path') || '/', root);
+            if (!sp) return this._json(res, { error: 'Zugriff verweigert' }, 403);
+            const limit   = Math.min(parseInt(url.searchParams.get('limit') || '25', 10), 200);
+            const dirOnly = url.searchParams.get('dirsonly') === '1';
+            return this._json(res, await this._storageAnalyze(sp, limit, dirOnly));
+        }
+
         // ── Version / Update
         if (p === '/api/version') return this._checkVersion(res);
         if (p === '/api/update' && m === 'POST') return this._doUpdate(res);
@@ -1760,6 +1937,57 @@ class LinuxDashboard extends utils.Adapter {
             if (found) return i;
         }
         return -1;
+    }
+
+    // ── Storage Analyzer ──────────────────────────────────────────────────────
+    _storageAnalyze(dirPath, limit, dirsOnly) {
+        const t0      = Date.now();
+        const safePath = dirPath.replace(/"/g, '');   // strip any quotes for safety
+
+        const findFiles = dirsOnly ? Promise.resolve([]) : new Promise(resolve => {
+            // find largest files, staying on same filesystem (-xdev)
+            const cmd = `find "${safePath}" -xdev -type f -printf '%s\t%p\n' 2>/dev/null | sort -rn | head -${limit}`;
+            exec(cmd, { timeout: 60000, maxBuffer: 4 * 1024 * 1024 }, (err, stdout) => {
+                if (!stdout) { resolve([]); return; }
+                const files = [];
+                stdout.trim().split('\n').forEach(line => {
+                    const tab = line.indexOf('\t');
+                    if (tab < 0) return;
+                    const bytes = parseInt(line.slice(0, tab)) || 0;
+                    const fp    = line.slice(tab + 1).trim();
+                    if (!fp) return;
+                    files.push({ path: fp, name: path.basename(fp), bytes, size: this._fmtBytes(bytes) });
+                });
+                resolve(files);
+            });
+        });
+
+        const findDirs = new Promise(resolve => {
+            // du: disk usage of direct subdirs, same filesystem
+            const cmd = `du -x --max-depth=1 "${safePath}" 2>/dev/null | sort -rn | head -${limit + 1}`;
+            exec(cmd, { timeout: 60000, maxBuffer: 4 * 1024 * 1024 }, (err, stdout) => {
+                if (!stdout) { resolve([]); return; }
+                const dirs = [];
+                stdout.trim().split('\n').forEach(line => {
+                    const tab = line.indexOf('\t');
+                    if (tab < 0) return;
+                    const kb  = parseInt(line.slice(0, tab)) || 0;
+                    const dp  = line.slice(tab + 1).trim();
+                    // skip the total line (the dirPath itself)
+                    if (!dp || dp === safePath || dp === '.' || path.resolve(dp) === path.resolve(safePath)) return;
+                    const bytes = kb * 1024;
+                    dirs.push({ path: dp, name: path.basename(dp) || dp, bytes, size: this._fmtBytes(bytes) });
+                });
+                resolve(dirs.slice(0, limit));
+            });
+        });
+
+        return Promise.all([findFiles, findDirs]).then(([files, dirs]) => ({
+            path:     dirPath,
+            files,
+            dirs,
+            duration: ((Date.now() - t0) / 1000).toFixed(1),
+        }));
     }
 
     // ── Version / Update ──────────────────────────────────────────────────────

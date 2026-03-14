@@ -1,7 +1,7 @@
 {
   "common": {
     "name": "linuxdashboard",
-    "version": "0.3.0",
+    "version": "0.4.0",
     "news": {
       "0.3.0": {
         "en": "Service manager, package manager, cron editor, file editor, process kill, disk analyzer, backup manager",
@@ -14,6 +14,10 @@
       "0.1.0": {
         "en": "Initial release",
         "de": "Erstveröffentlichung"
+      },
+      "0.4.0": {
+        "en": "Storage analyzer: find largest files and folders, drill-down navigation",
+        "de": "Speicher-Analyse: größte Dateien und Ordner finden, Drill-Down Navigation"
       }
     },
     "title": "Linux Dashboard",
