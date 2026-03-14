@@ -33,10 +33,11 @@ CPU, RAM, Festplatten, Prozesse, Dateimanager, Log-Viewer und Terminal, alles an
 
 ```bash
 iobroker url https://github.com/MPunktBPunkt/iobroker.linuxdashboard
+iobroker add linuxdashboard
 ```
 
 > **Hinweis:** `iobroker url` installiert aus einer GitHub-URL.  
-> `iobroker add` funktioniert nur für Adapter aus dem offiziellen ioBroker-Repository.
+> `iobroker add` legt anschließend die Adapter-Instanz an.
 
 ### Option B – manuell (ohne Internet / Offline)
 
