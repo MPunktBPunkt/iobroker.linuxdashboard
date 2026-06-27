@@ -1,6 +1,6 @@
 # ioBroker Linux Dashboard Adapter
 
-[![Version](https://img.shields.io/badge/version-0.6.0-blue.svg)](https://github.com/MPunktBPunkt/iobroker.linuxdashboard)
+[![Version](https://img.shields.io/badge/version-0.6.1-blue.svg)](https://github.com/MPunktBPunkt/iobroker.linuxdashboard)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D16-brightgreen.svg)](https://nodejs.org)
 
@@ -184,11 +184,21 @@ Damit funktionieren:
 | Dienste starten/stoppen       | ⚠️ Nur mit sudo-Rechten |
 | Pakete installieren           | ⚠️ Nur mit sudo-Rechten |
 
-Für privilegierte Befehle `/etc/sudoers` anpassen:
+Für privilegierte Befehle `/etc/sudoers` anpassen. Für die **Speicher-Bereinigung** (Logs, APT, Journal, /tmp) reicht eine eingeschränkte Regel:
+
+```bash
+# Als root – nur die für Bereinigung benötigten Befehle:
+echo 'iobroker ALL=(ALL) NOPASSWD: /usr/bin/find, /bin/rm, /usr/bin/journalctl, /usr/bin/apt-get, /usr/bin/apt, /usr/bin/du, /bin/ls' | sudo tee /etc/sudoers.d/iobroker-cleanup
+sudo chmod 440 /etc/sudoers.d/iobroker-cleanup
+```
+
+Für Dienste und Pakete zusätzlich:
 
 ```
 iobroker ALL=(ALL) NOPASSWD: /bin/systemctl
 ```
+
+> Im Web-UI unter **Nodes → Bereinigung** zeigt ein Banner, ob passwordloses sudo aktiv ist.
 
 ---
 
@@ -209,6 +219,13 @@ iobroker restart linuxdashboard
 ---
 
 ## Changelog
+
+### 0.6.1 (2026-06-27)
+
+* Log-Bereinigung: erweiterte Muster (*.xz, *.zst, *.old, Rotation bis *.20)
+* sudo-Status-Banner in der Bereinigungs-Ansicht mit sudoers-Anleitung
+* Detaillierte Lösch-Berichte (Anzahl gelöscht / verbleibend / Fehlerdetails)
+* Vorschau warnt bei fehlenden sudo-Rechten oder nicht löschbaren Dateien
 
 ### 0.1.0 (2026-03-14)
 

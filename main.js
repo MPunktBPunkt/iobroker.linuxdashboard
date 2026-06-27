@@ -15,7 +15,7 @@ try {
     WebSocketServer = ws.WebSocketServer || ws.Server;
 } catch (_) { WebSocket = null; WebSocketServer = null; }
 
-const ADAPTER_VERSION = '0.6.0';
+const ADAPTER_VERSION = '0.6.1';
 const GITHUB_REPO     = 'MPunktBPunkt/iobroker.linuxdashboard';
 
 // ── CPU diff ──────────────────────────────────────────────────────────────────
@@ -225,6 +225,10 @@ a{color:var(--accent);text-decoration:none}
 .clean-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .clean-size-badge{font-family:var(--mono);font-size:12px;color:var(--yellow);font-weight:600;padding:3px 8px;
   background:var(--bg3);border-radius:var(--rs);display:none}
+.clean-sudo-banner{margin-bottom:12px;padding:12px 16px;border-radius:var(--r);font-size:12px;line-height:1.5;border:1px solid var(--border)}
+.clean-sudo-banner.ok{background:#3fb95015;border-color:#3fb95040;color:var(--green)}
+.clean-sudo-banner.warn{background:#e3b34115;border-color:#e3b34140;color:var(--yellow)}
+.clean-sudo-banner code{font-family:var(--mono);font-size:11px;display:block;margin-top:8px;padding:8px;background:var(--bg1);border-radius:var(--rs);white-space:pre-wrap;color:var(--text)}
 .custom-rule-row{display:flex;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border2)}
 /* Storage Analyzer */
 .sa-row{display:grid;grid-template-columns:minmax(0,1fr) 80px;align-items:center;gap:8px;
@@ -563,6 +567,7 @@ return `<!DOCTYPE html>
   <!-- Bereinigung -->
   <div class="sys-panel" id="sys-bereinigung">
     <div class="content" style="padding:0">
+      <div id="sudo-status-banner" class="clean-sudo-banner" style="display:none"></div>
 
       <!-- APT Cache -->
       <div class="clean-rule">
@@ -612,7 +617,7 @@ return `<!DOCTYPE html>
           <span class="clean-rule-icon">&#x1F5D1;</span>
           <div>
             <div class="clean-rule-title">Alte Log-Dateien l&ouml;schen</div>
-            <div class="clean-rule-desc">Komprimierte &amp; rotierte Logs in /var/log (*.gz, *.1, *.2 ...)</div>
+            <div class="clean-rule-desc">Komprimierte &amp; rotierte Logs in /var/log (*.gz, *.xz, *.1&ndash;*.20, *.old ...)</div>
           </div>
           <span class="clean-size-badge" id="oldlogs-size"></span>
         </div>
@@ -916,7 +921,7 @@ window.showSysSub = function(name) {
   if (btn) btn.classList.add('active');
   _activeSysSub = name;
   if (name === 'speicher') { /* on-demand */ }
-  if (name === 'bereinigung') { loadAllCleanPreviews(); loadCustomRules(); }
+  if (name === 'bereinigung') { loadSudoStatus(); loadAllCleanPreviews(); loadCustomRules(); }
   if (name === 'services') loadServices();
   if (name === 'packages') loadInstalledPackages();
   if (name === 'cron') loadCrontab();
@@ -1327,10 +1332,34 @@ async function cleanPreview(type) {
   try {
     const d = await fetchJSON('/api/clean-preview?type=' + type + '&' + new URLSearchParams(cleanParams(type)));
     if (d.error) { previewEl.textContent = 'Fehler: ' + d.error; previewEl.className = 'clean-preview error'; return; }
-    previewEl.textContent = d.preview || 'Nichts zu bereinigen';
+    let text = d.preview || 'Nichts zu bereinigen';
+    if (d.sudoOk === false && d.bytes > 0) text += '\n\n\u26a0 Vorschau ohne sudo \u2013 L\u00f6schen kann fehlschlagen.';
+    if (d.notDeletable > 0) text += '\n\n\u26a0 ' + d.notDeletable + ' Datei(en) nicht l\u00f6schbar (fehlende Rechte).';
+    previewEl.textContent = text;
     previewEl.className = 'clean-preview' + (d.bytes > 0 ? ' has-data' : '');
     if (sizeEl) { sizeEl.textContent = d.sizeHuman || ''; sizeEl.style.display = d.bytes > 0 ? '' : 'none'; }
   } catch(e) { previewEl.textContent = 'Fehler: ' + e.message; previewEl.className = 'clean-preview error'; }
+}
+
+async function loadSudoStatus() {
+  const el = document.getElementById('sudo-status-banner');
+  if (!el) return;
+  try {
+    const d = await fetchJSON('/api/sudo-status');
+    el.style.display = '';
+    if (d.ok) {
+      el.className = 'clean-sudo-banner ok';
+      el.innerHTML = '\u2714 Passwordloses sudo ist aktiv \u2013 Bereinigung kann Systemdateien l\u00f6schen.';
+    } else {
+      el.className = 'clean-sudo-banner warn';
+      el.innerHTML = '\u26a0 ' + esc(d.message || 'Kein sudo-Zugriff') +
+        (d.hint ? '<code>' + esc(d.hint) + '</code>' : '');
+    }
+  } catch(e) {
+    el.style.display = '';
+    el.className = 'clean-sudo-banner warn';
+    el.textContent = 'sudo-Status konnte nicht gepr\u00fcft werden: ' + e.message;
+  }
 }
 
 async function cleanRun(type) {
@@ -1346,7 +1375,7 @@ async function cleanRun(type) {
     const d = await postJSON('/api/clean-run', { type, ...params });
     if (d.error) { resultEl.textContent = '\u2717 Fehler: ' + d.error; resultEl.style.color = 'var(--red)'; return; }
     resultEl.textContent = d.output || '\u2714 Fertig';
-    resultEl.style.color = 'var(--green)';
+    resultEl.style.color = d.warning ? 'var(--yellow)' : 'var(--green)';
     if (type !== 'custom') cleanPreview(type);
   } catch(e) { resultEl.textContent = 'Fehler: ' + e.message; resultEl.style.color = 'var(--red)'; }
 }
@@ -1969,6 +1998,7 @@ class LinuxDashboard extends utils.Adapter {
         }
 
         // ── Bereinigung
+        if (p === '/api/sudo-status' && m === 'GET') return this._json(res, await this._sudoStatus());
         if (p === '/api/clean-preview' && m === 'GET') return this._json(res, await this._cleanPreview(url.searchParams));
         if (p === '/api/clean-run'     && m === 'POST') {
             const body = JSON.parse(await this._readBody(req));
@@ -2419,52 +2449,128 @@ class LinuxDashboard extends utils.Adapter {
     }
 
     // ── Bereinigung ──────────────────────────────────────────────────────────
+    _runUser() {
+        return process.env.SUDO_USER || process.env.USER || 'iobroker';
+    }
+
+    _sudoersHint() {
+        const user = this._runUser();
+        return `# Als root ausführen:\necho '${user} ALL=(ALL) NOPASSWD: /usr/bin/find, /bin/rm, /usr/bin/journalctl, /usr/bin/apt-get, /usr/bin/apt, /usr/bin/du, /bin/ls' | sudo tee /etc/sudoers.d/iobroker-cleanup\nsudo chmod 440 /etc/sudoers.d/iobroker-cleanup`;
+    }
+
+    async _sudoStatus() {
+        const result = await this._cmdExec('sudo -n true 2>&1', 5000);
+        const output = result.output;
+        if (output.includes('sudo: a password is required')) {
+            return { ok: false, message: 'Passwordloses sudo fehlt – Bereinigung von /var/log und System-Caches schlägt oft fehl.', hint: this._sudoersHint() };
+        }
+        if (output.includes('sudo: command not found')) {
+            return { ok: false, message: 'sudo ist nicht installiert.', hint: null };
+        }
+        if (result.exitCode !== 0) {
+            return { ok: false, message: 'sudo-Zugriff verweigert.', hint: this._sudoersHint() };
+        }
+        return { ok: true, user: this._runUser() };
+    }
+
+    _oldLogFindExpr() {
+        const parts = ["-name '*.gz'", "-name '*.xz'", "-name '*.bz2'", "-name '*.zst'", "-name '*.old'", "-name '*.bak'"];
+        for (let i = 1; i <= 20; i++) parts.push(`-name '*.${i}'`);
+        return `-type f \\( ${parts.join(' -o ')} \\)`;
+    }
+
+    async _privilegedShell(script, timeout = 120000) {
+        const status = await this._sudoStatus();
+        if (!status.ok) {
+            return { ok: false, sudoError: true, output: '', error: status.message + (status.hint ? '\n\n' + status.hint : '') };
+        }
+        const result = await this._cmdExec(`sudo -n sh -c ${JSON.stringify(script)}`, timeout);
+        const denied = /permission denied|cannot remove|operation not permitted|read-only file system/i.test(result.output);
+        return {
+            ok: !status.ok ? false : result.exitCode === 0 && !denied,
+            sudoError: false,
+            output: result.output,
+            warning: denied || (result.exitCode !== 0 && !/Gelöscht|geleert|bereinigt|✔/i.test(result.output)),
+            exitCode: result.exitCode,
+        };
+    }
+
+    async _shellOut(script, preferSudo = true, timeout = 60000) {
+        if (preferSudo) {
+            const status = await this._sudoStatus();
+            if (status.ok) return (await this._cmdExec(`sudo -n sh -c ${JSON.stringify(script)}`, timeout)).output;
+        }
+        return (await this._cmdExec(`sh -c ${JSON.stringify(script)}`, timeout)).output;
+    }
+
+    async _deleteMatchedFiles(baseDir, findExpr) {
+        const script = [
+            `cnt_before=$(find ${baseDir} ${findExpr} 2>/dev/null | wc -l)`,
+            'err_file=$(mktemp)',
+            `find ${baseDir} ${findExpr} -print0 2>/dev/null | xargs -0 -r rm -fv 2>"$err_file" || true`,
+            `cnt_after=$(find ${baseDir} ${findExpr} 2>/dev/null | wc -l)`,
+            'deleted=$((cnt_before - cnt_after))',
+            'echo "✔ $deleted von $cnt_before Dateien gelöscht"',
+            'if [ "$cnt_after" -gt 0 ]; then echo "⚠ $cnt_after Dateien konnten nicht gelöscht werden (Berechtigung oder gesperrt)"; fi',
+            'if [ -s "$err_file" ]; then echo "--- Fehlerdetails ---"; head -20 "$err_file"; fi',
+            'rm -f "$err_file"',
+        ].join('; ');
+        return this._privilegedShell(script);
+    }
+
     async _cleanPreview(params) {
         const type = params.get('type') || '';
-        // Helper: run with sudo if available, fallback without
-        const s = (cmd) => `sudo sh -c '${cmd}' 2>/dev/null || sh -c '${cmd}' 2>/dev/null`;
+        const sudoStatus = await this._sudoStatus();
+        const sudoMeta = { sudoOk: sudoStatus.ok };
         try {
             if (type === 'apt') {
-                const size  = await this._cmdOut(s("du -sh /var/cache/apt/archives/ | cut -f1"));
-                const bytes = await this._cmdOut(s("du -sb /var/cache/apt/archives/ | cut -f1"));
-                const list  = await this._cmdOut(s("ls /var/cache/apt/archives/*.deb 2>/dev/null | head -20 || echo '(keine .deb Dateien)'"));
-                return { preview: `Gr\u00f6\u00dfe: ${size.trim()}\n\n${list.trim()}`, bytes: parseInt(bytes) || 0, sizeHuman: size.trim() };
+                const size  = await this._shellOut("du -sh /var/cache/apt/archives/ | cut -f1");
+                const bytes = await this._shellOut("du -sb /var/cache/apt/archives/ | cut -f1");
+                const list  = await this._shellOut("ls /var/cache/apt/archives/*.deb 2>/dev/null | head -20 || echo '(keine .deb Dateien)'");
+                return { preview: `Gr\u00f6\u00dfe: ${size.trim()}\n\n${list.trim()}`, bytes: parseInt(bytes) || 0, sizeHuman: size.trim(), ...sudoMeta };
             }
             if (type === 'journal') {
                 const cur   = await this._cmdOut('journalctl --disk-usage 2>/dev/null || echo "N/A"');
-                const files = await this._cmdOut(s("find /var/log/journal -type f | wc -l"));
-                const bytes = await this._cmdOut(s("du -sb /var/log/journal | cut -f1 || echo 0"));
-                const sh    = await this._cmdOut(s("du -sh /var/log/journal | cut -f1"));
-                return { preview: cur.trim() + `\n${files.trim()} Journal-Dateien`, bytes: parseInt(bytes) || 0, sizeHuman: sh.trim() };
+                const files = await this._shellOut("find /var/log/journal -type f | wc -l");
+                const bytes = await this._shellOut("du -sb /var/log/journal | cut -f1 || echo 0");
+                const sh    = await this._shellOut("du -sh /var/log/journal | cut -f1");
+                return { preview: cur.trim() + `\n${files.trim()} Journal-Dateien`, bytes: parseInt(bytes) || 0, sizeHuman: sh.trim(), ...sudoMeta };
             }
             if (type === 'oldlogs') {
-                const pat   = "-name '*.gz' -o -name '*.1' -o -name '*.2' -o -name '*.3' -o -name '*.4'";
-                const list  = await this._cmdOut(s(`find /var/log -type f \\( ${pat} \\) | head -30`));
-                const bytes = await this._cmdOut(s(`find /var/log -type f \\( ${pat} \\) -printf '%s\\n' | awk '{s+=\$1}END{print s+0}'`));
-                const count = await this._cmdOut(s(`find /var/log -type f \\( ${pat} \\) | wc -l`));
-                return { preview: `${count.trim()} Dateien:\n${list.trim() || '(keine gefunden)'}`, bytes: parseInt(bytes) || 0, sizeHuman: this._fmtBytes(parseInt(bytes) || 0) };
+                const expr  = this._oldLogFindExpr();
+                const list  = await this._shellOut(`find /var/log ${expr} 2>/dev/null | head -30`);
+                const bytes = await this._shellOut(`find /var/log ${expr} -printf '%s\\n' 2>/dev/null | awk '{s+=$1}END{print s+0}'`);
+                const count = await this._shellOut(`find /var/log ${expr} 2>/dev/null | wc -l`);
+                const notDel = sudoStatus.ok ? 0 : parseInt(await this._shellOut(`find /var/log ${expr} ! -writable 2>/dev/null | wc -l`, false)) || 0;
+                return {
+                    preview: `${count.trim()} Dateien:\n${list.trim() || '(keine gefunden)'}`,
+                    bytes: parseInt(bytes) || 0,
+                    sizeHuman: this._fmtBytes(parseInt(bytes) || 0),
+                    notDeletable: notDel,
+                    ...sudoMeta,
+                };
             }
             if (type === 'tmp') {
                 const days  = parseInt(params.get('days') || '7', 10);
                 const mtime = days > 0 ? `-mtime +${days}` : '';
-                const list  = await this._cmdOut(`find /tmp /var/tmp -type f ${mtime} 2>/dev/null | head -30`);
-                const bytes = await this._cmdOut(`find /tmp /var/tmp -type f ${mtime} -printf '%s\\n' 2>/dev/null | awk '{s+=$1}END{print s+0}'`);
-                const count = await this._cmdOut(`find /tmp /var/tmp -type f ${mtime} 2>/dev/null | wc -l`);
-                return { preview: `${count.trim()} Dateien${days > 0 ? ' \u00e4lter als ' + days + ' Tage' : ''}:\n${list.trim() || '(keine)'}`, bytes: parseInt(bytes) || 0, sizeHuman: this._fmtBytes(parseInt(bytes) || 0) };
+                const list  = await this._shellOut(`find /tmp /var/tmp -type f ${mtime} 2>/dev/null | head -30`, sudoStatus.ok);
+                const bytes = await this._shellOut(`find /tmp /var/tmp -type f ${mtime} -printf '%s\\n' 2>/dev/null | awk '{s+=$1}END{print s+0}'`, sudoStatus.ok);
+                const count = await this._shellOut(`find /tmp /var/tmp -type f ${mtime} 2>/dev/null | wc -l`, sudoStatus.ok);
+                return { preview: `${count.trim()} Dateien${days > 0 ? ' \u00e4lter als ' + days + ' Tage' : ''}:\n${list.trim() || '(keine)'}`, bytes: parseInt(bytes) || 0, sizeHuman: this._fmtBytes(parseInt(bytes) || 0), ...sudoMeta };
             }
             if (type === 'npm') {
                 const dir   = await this._cmdOut('npm config get cache 2>/dev/null || echo ~/.npm');
                 const bytes = await this._cmdOut(`du -sb ${dir.trim()} 2>/dev/null | cut -f1 || echo 0`);
-                return { preview: `npm Cache: ${dir.trim()}\nGr\u00f6\u00dfe: ${this._fmtBytes(parseInt(bytes) || 0)}`, bytes: parseInt(bytes) || 0, sizeHuman: this._fmtBytes(parseInt(bytes) || 0) };
+                return { preview: `npm Cache: ${dir.trim()}\nGr\u00f6\u00dfe: ${this._fmtBytes(parseInt(bytes) || 0)}`, bytes: parseInt(bytes) || 0, sizeHuman: this._fmtBytes(parseInt(bytes) || 0), sudoOk: true };
             }
             if (type === 'custom-single') {
                 const p    = params.get('path') || '';
                 const days = parseInt(params.get('days') || '0', 10);
-                if (!p) return { preview: 'Kein Pfad angegeben', bytes: 0 };
+                if (!p) return { preview: 'Kein Pfad angegeben', bytes: 0, ...sudoMeta };
                 const mtime = days > 0 ? `-mtime +${days}` : '';
-                const list  = await this._cmdOut(`find ${p} -type f ${mtime} 2>/dev/null | head -20 || ls -lh ${p} 2>/dev/null | head -20`);
-                const bytes = await this._cmdOut(`find ${p} -type f ${mtime} -printf '%s\\n' 2>/dev/null | awk '{s+=$1}END{print s+0}'`);
-                return { preview: list.trim() || '(nichts gefunden)', bytes: parseInt(bytes) || 0, sizeHuman: this._fmtBytes(parseInt(bytes) || 0) };
+                const list  = await this._shellOut(`find ${p} -type f ${mtime} 2>/dev/null | head -20 || ls -lh ${p} 2>/dev/null | head -20`, sudoStatus.ok);
+                const bytes = await this._shellOut(`find ${p} -type f ${mtime} -printf '%s\\n' 2>/dev/null | awk '{s+=$1}END{print s+0}'`, sudoStatus.ok);
+                return { preview: list.trim() || '(nichts gefunden)', bytes: parseInt(bytes) || 0, sizeHuman: this._fmtBytes(parseInt(bytes) || 0), ...sudoMeta };
             }
             return { error: 'Unbekannter Typ: ' + type };
         } catch (e) { return { error: e.message }; }
@@ -2472,51 +2578,66 @@ class LinuxDashboard extends utils.Adapter {
 
     async _cleanRun(params) {
         const { type } = params;
-        // Prefix with sudo; -n = non-interactive (fail fast if no sudo rights)
-        const sudo = 'sudo -n';
         try {
-            let cmd = '';
+            let result;
             if (type === 'apt') {
-                cmd = `${sudo} apt-get clean 2>&1 && ${sudo} apt-get autoremove -y 2>&1 && echo "\u2714 APT-Cache geleert"`;
+                result = await this._privilegedShell('apt-get clean 2>&1 && apt-get autoremove -y 2>&1 && echo "✔ APT-Cache geleert"');
             } else if (type === 'journal') {
                 const mb   = parseInt(params.maxSizeMB || '500', 10);
                 const days = parseInt(params.maxDays   || '30',  10);
-                cmd = `${sudo} journalctl --vacuum-size=${mb}M 2>&1 && ${sudo} journalctl --vacuum-time=${days}d 2>&1`;
+                result = await this._privilegedShell(`journalctl --vacuum-size=${mb}M 2>&1 && journalctl --vacuum-time=${days}d 2>&1 && echo "✔ Journal bereinigt"`);
             } else if (type === 'oldlogs') {
-                const pat = "-name '*.gz' -o -name '*.1' -o -name '*.2' -o -name '*.3' -o -name '*.4'";
-                cmd = `${sudo} find /var/log -type f \( ${pat} \) -delete 2>&1 && echo '\u2714 Alte Log-Dateien gel\u00f6scht'`;
+                result = await this._deleteMatchedFiles('/var/log', this._oldLogFindExpr());
             } else if (type === 'tmp') {
                 const days  = parseInt(params.days || '7', 10);
                 const mtime = days > 0 ? `-mtime +${days}` : '';
-                cmd = `${sudo} find /tmp /var/tmp -type f ${mtime} -delete 2>&1 && echo '\u2714 /tmp bereinigt'`;
+                result = await this._deleteMatchedFiles('/tmp /var/tmp', `-type f ${mtime}`);
             } else if (type === 'npm') {
-                cmd = 'npm cache clean --force 2>&1 && echo "\u2714 npm Cache geleert"';
+                const output = await this._cmdOut('npm cache clean --force 2>&1 && echo "✔ npm Cache geleert"');
+                result = { ok: true, output: output.trim(), warning: false };
             } else if (type === 'custom') {
                 const rules = JSON.parse(params.rules || '[]');
                 if (!rules.length) return { output: 'Keine Regeln definiert' };
-                const cmds = rules.map(r => {
+                const outputs = [];
+                let warning = false;
+                let sudoError = false;
+                for (const r of rules) {
+                    const safePath = String(r.path || '').replace(/["'`$\\]/g, '');
+                    if (!safePath) continue;
                     const mtime = r.days > 0 ? `-mtime +${r.days}` : '';
-                    return `echo "--- ${r.path} ---" && ${sudo} find ${r.path} -type f ${mtime} -delete 2>&1 || ${sudo} rm -f ${r.path} 2>&1`;
-                });
-                cmd = cmds.join(' && ');
+                    const sub = await this._privilegedShell([
+                        `echo "--- ${safePath} ---"`,
+                        `cnt_before=$(find ${safePath} -type f ${mtime} 2>/dev/null | wc -l)`,
+                        `find ${safePath} -type f ${mtime} -print0 2>/dev/null | xargs -0 -r rm -fv 2>/dev/null || rm -f ${safePath} 2>/dev/null || true`,
+                        `cnt_after=$(find ${safePath} -type f ${mtime} 2>/dev/null | wc -l)`,
+                        'echo "✔ $((cnt_before - cnt_after)) Dateien gelöscht"',
+                    ].join('; '));
+                    if (sub.sudoError) return { ok: false, error: sub.error };
+                    outputs.push(sub.output);
+                    if (sub.warning) warning = true;
+                }
+                result = { ok: true, output: outputs.join('\n'), warning };
             } else {
                 return { error: 'Unbekannter Typ' };
             }
+
+            if (result.sudoError) return { ok: false, error: result.error };
             this._addLog('INFO', `Bereinigung: ${type}`);
-            const result = await this._cmdOut(cmd, 120000);
-            if (result.includes('sudo: a password is required') || result.includes('sudo: command not found')) {
-                return { ok: false, error: 'Keine sudo-Rechte. Bitte sudoers einrichten:\necho "iobroker ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/iobroker' };
-            }
-            return { ok: true, output: result.trim() || '\u2714 Fertig (keine Ausgabe)' };
+            return { ok: result.ok, output: result.output || '\u2714 Fertig (keine Ausgabe)', warning: !!result.warning };
         } catch (e) { return { error: e.message }; }
     }
 
-    _cmdOut(cmd, timeout = 15000) {
-        return new Promise((resolve, reject) => {
+    _cmdExec(cmd, timeout = 15000) {
+        return new Promise(resolve => {
             exec(cmd, { timeout, maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
-                resolve((stdout || '') + (stderr || ''));
+                const out = ((stdout || '') + (stderr || '')).trim();
+                resolve({ stdout: (stdout || '').trim(), stderr: (stderr || '').trim(), output: out, exitCode: err ? (err.code ?? 1) : 0 });
             });
         });
+    }
+
+    _cmdOut(cmd, timeout = 15000) {
+        return this._cmdExec(cmd, timeout).then(r => r.output);
     }
 
     // ── Storage Analyzer ──────────────────────────────────────────────────────
