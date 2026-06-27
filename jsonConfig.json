@@ -48,6 +48,30 @@
       "default": "",
       "help": "z.B.: ls,df,free,ps,systemctl"
     },
+    "httpAuthEnabled": {
+      "type": "checkbox",
+      "label": "HTTP Basic Auth aktivieren",
+      "default": false,
+      "help": "Schützt das Web-UI mit Benutzername und Passwort"
+    },
+    "httpAuthUser": {
+      "type": "text",
+      "label": "HTTP Benutzername",
+      "default": "",
+      "help": "Nur wenn Basic Auth aktiviert ist"
+    },
+    "httpAuthPassword": {
+      "type": "text",
+      "label": "HTTP Passwort",
+      "default": "",
+      "help": "Nur wenn Basic Auth aktiviert ist"
+    },
+    "customCleanRules": {
+      "type": "text",
+      "label": "Standard-Bereinigungsregeln (JSON)",
+      "default": "[]",
+      "help": "z.B. [{\"path\":\"/opt/iobroker/log/*.log.*\",\"days\":7}] – wird beim ersten Start übernommen"
+    },
     "verboseLogging": {
       "type": "checkbox",
       "label": "Ausführliches Logging",

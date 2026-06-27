@@ -7,6 +7,7 @@ const os       = require('os');
 const fs       = require('fs');
 const path     = require('path');
 const { exec } = require('child_process');
+const crypto   = require('crypto');
 
 let WebSocket, WebSocketServer;
 try {
@@ -15,7 +16,7 @@ try {
     WebSocketServer = ws.WebSocketServer || ws.Server;
 } catch (_) { WebSocket = null; WebSocketServer = null; }
 
-const ADAPTER_VERSION = '0.6.1';
+const ADAPTER_VERSION = '0.7.0';
 const GITHUB_REPO     = 'MPunktBPunkt/iobroker.linuxdashboard';
 
 // ── CPU diff ──────────────────────────────────────────────────────────────────
@@ -89,6 +90,7 @@ a{color:var(--accent);text-decoration:none}
   letter-spacing:.8px;margin-bottom:16px;display:flex;align-items:center;gap:8px}
 .card-title .dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
 .grid{display:grid;gap:16px}.grid-2{grid-template-columns:1fr 1fr}.grid-3{grid-template-columns:1fr 1fr 1fr}.grid-4{grid-template-columns:repeat(4,1fr)}
+@media(max-width:900px){.grid-2,.grid-3,.grid-4{grid-template-columns:1fr}.tabs{overflow-x:auto;flex-wrap:nowrap}.content{padding:16px}.header{padding:0 16px}.sys-subnav{overflow-x:auto}}
 /* Gauge */
 .gauge-wrap{display:flex;flex-direction:column;align-items:center;gap:8px}
 .gauge-svg{transform:rotate(-90deg)}
@@ -505,7 +507,10 @@ return `<!DOCTYPE html>
       <input type="text" id="log-filter" placeholder="Filter (Regex)..." style="width:200px" oninput="applyLogFilter()">
       <button class="btn btn-ghost btn-sm" onclick="loadLogs()">&#x21BB; Laden</button>
       <label style="display:flex;align-items:center;gap:6px;color:var(--muted);font-size:13px;cursor:pointer">
-        <input type="checkbox" id="log-autoscroll" checked> Auto-Scroll
+        <input type="checkbox" id="log-autoscroll" checked onchange="onLogAutoscrollChange()"> Auto-Scroll
+      </label>
+      <label style="display:flex;align-items:center;gap:6px;color:var(--muted);font-size:13px;cursor:pointer">
+        <input type="checkbox" id="log-live" onchange="toggleLogLive()"> Live
       </label>
       <button class="btn btn-ghost btn-sm" onclick="exportLogs()" style="margin-left:auto">&#x1F4E5; Export</button>
     </div>
@@ -611,6 +616,24 @@ return `<!DOCTYPE html>
         </div>
       </div>
 
+      <!-- ioBroker Logs -->
+      <div class="clean-rule">
+        <div class="clean-rule-header">
+          <span class="clean-rule-icon">&#x1F4E6;</span>
+          <div>
+            <div class="clean-rule-title">ioBroker Log-Dateien</div>
+            <div class="clean-rule-desc">Rotierte &amp; komprimierte Logs in /opt/iobroker/log</div>
+          </div>
+          <span class="clean-size-badge" id="iobrokerlogs-size"></span>
+        </div>
+        <div class="clean-preview" id="iobrokerlogs-preview">Vorschau laden...</div>
+        <div class="clean-result" id="iobrokerlogs-result"></div>
+        <div class="clean-actions">
+          <button class="btn btn-ghost btn-sm" onclick="cleanPreview('iobrokerlogs')">&#x1F50D; Vorschau</button>
+          <button class="btn btn-red btn-sm" onclick="cleanRun('iobrokerlogs')">&#x1F9F9; Bereinigen</button>
+        </div>
+      </div>
+
       <!-- Alte Log-Dateien -->
       <div class="clean-rule">
         <div class="clean-rule-header">
@@ -699,6 +722,7 @@ return `<!DOCTYPE html>
 
   <!-- Service Manager -->
   <div class="sys-panel" id="sys-services">
+    <div id="sudo-status-services" class="clean-sudo-banner" style="display:none;margin:0 0 12px"></div>
     <div class="card">
       <div class="card-title"><span class="dot" style="background:var(--green)"></span>Service Manager
         <div style="display:flex;gap:8px;margin-left:auto">
@@ -723,6 +747,7 @@ return `<!DOCTYPE html>
 
   <!-- Package Manager -->
   <div class="sys-panel" id="sys-packages">
+    <div id="sudo-status-packages" class="clean-sudo-banner" style="display:none;margin:0 0 12px"></div>
     <div class="card">
       <div class="card-title"><span class="dot" style="background:var(--accent)"></span>Package Manager (apt)
         <span style="color:var(--dim);font-size:11px;font-weight:400;margin-left:8px">&#x26A0;&#xFE0F; Erfordert sudo-Rechte</span>
@@ -899,6 +924,7 @@ function setGauge(id, pct, c1, c2, c3) {
 // ── Tab Navigation ─────────────────────────────────────────────────────────
 let _activeTab = 'daten', _activeSysSub = 'services';
 window.showTab = function(name) {
+  if (_activeTab === 'logs' && name !== 'logs') stopLogLive(false);
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.tab-btn').forEach(b => b.className = 'tab-btn');
   const panel = document.getElementById('tab-' + name);
@@ -922,8 +948,8 @@ window.showSysSub = function(name) {
   _activeSysSub = name;
   if (name === 'speicher') { /* on-demand */ }
   if (name === 'bereinigung') { loadSudoStatus(); loadAllCleanPreviews(); loadCustomRules(); }
-  if (name === 'services') loadServices();
-  if (name === 'packages') loadInstalledPackages();
+  if (name === 'services') { loadSudoStatus('sudo-status-services'); loadServices(); }
+  if (name === 'packages') { loadSudoStatus('sudo-status-packages'); loadInstalledPackages(); }
   if (name === 'cron') loadCrontab();
   if (name === 'update') loadSysInfo();
 };
@@ -1308,14 +1334,15 @@ async function iobInstall() {
 
 
 // ── Bereinigung ────────────────────────────────────────────────────────────
-let _customRules = JSON.parse(localStorage.getItem('ld_custom_rules') || '[]');
+let _customRules = [];
 
 const CLEAN_DEFS = {
-  apt:     { label: 'APT-Cache' },
-  journal: { label: 'Journal' },
-  oldlogs: { label: 'Alte Logs' },
-  tmp:     { label: '/tmp' },
-  npm:     { label: 'npm Cache' },
+  apt:          { label: 'APT-Cache' },
+  journal:      { label: 'Journal' },
+  iobrokerlogs: { label: 'ioBroker Logs' },
+  oldlogs:      { label: 'Alte Logs' },
+  tmp:          { label: '/tmp' },
+  npm:          { label: 'npm Cache' },
 };
 
 function cleanParams(type) {
@@ -1341,15 +1368,15 @@ async function cleanPreview(type) {
   } catch(e) { previewEl.textContent = 'Fehler: ' + e.message; previewEl.className = 'clean-preview error'; }
 }
 
-async function loadSudoStatus() {
-  const el = document.getElementById('sudo-status-banner');
+async function loadSudoStatus(targetId) {
+  const el = document.getElementById(targetId || 'sudo-status-banner');
   if (!el) return;
   try {
     const d = await fetchJSON('/api/sudo-status');
     el.style.display = '';
     if (d.ok) {
       el.className = 'clean-sudo-banner ok';
-      el.innerHTML = '\u2714 Passwordloses sudo ist aktiv \u2013 Bereinigung kann Systemdateien l\u00f6schen.';
+      el.innerHTML = '\u2714 Passwordloses sudo ist aktiv' + (targetId ? ' \u2013 Dienste &amp; Pakete k\u00f6nnen verwaltet werden.' : ' \u2013 Bereinigung kann Systemdateien l\u00f6schen.');
     } else {
       el.className = 'clean-sudo-banner warn';
       el.innerHTML = '\u26a0 ' + esc(d.message || 'Kein sudo-Zugriff') +
@@ -1384,10 +1411,25 @@ function loadAllCleanPreviews() {
   Object.keys(CLEAN_DEFS).forEach(type => cleanPreview(type));
 }
 
-// Custom rules
-function loadCustomRules() {
-  _customRules = JSON.parse(localStorage.getItem('ld_custom_rules') || '[]');
+// Custom rules (serverseitig gespeichert)
+let _customRules = [];
+
+async function loadCustomRules() {
+  try {
+    const d = await fetchJSON('/api/custom-rules');
+    _customRules = d.rules || [];
+    const legacy = JSON.parse(localStorage.getItem('ld_custom_rules') || '[]');
+    if (legacy.length && !_customRules.length) {
+      _customRules = legacy;
+      await postJSON('/api/custom-rules', { rules: _customRules });
+      localStorage.removeItem('ld_custom_rules');
+    }
+  } catch(_) { _customRules = []; }
   renderCustomRules();
+}
+
+async function saveCustomRules() {
+  await postJSON('/api/custom-rules', { rules: _customRules });
 }
 
 function renderCustomRules() {
@@ -1403,20 +1445,30 @@ function renderCustomRules() {
   ).join('');
 }
 
-function customRuleAdd() {
+async function customRuleAdd() {
   const pathVal = document.getElementById('custom-path').value.trim();
   const days    = parseInt(document.getElementById('custom-days').value || '0', 10);
   if (!pathVal) { alert('Bitte einen Pfad eingeben'); return; }
   _customRules.push({ path: pathVal, days });
-  localStorage.setItem('ld_custom_rules', JSON.stringify(_customRules));
+  await saveCustomRules();
   document.getElementById('custom-path').value = '';
   renderCustomRules();
 }
 
-function customRuleDelete(i) {
+async function customRuleDelete(i) {
   _customRules.splice(i, 1);
-  localStorage.setItem('ld_custom_rules', JSON.stringify(_customRules));
+  await saveCustomRules();
   renderCustomRules();
+}
+
+async function saAddCleanRule(filePath, days) {
+  if (!confirm('Bereinigungsregel f\u00fcr\\n' + filePath + '\\nhinzuf\u00fcgen?')) return;
+  _customRules.push({ path: filePath, days: days || 0 });
+  await saveCustomRules();
+  showTab('system');
+  showSysSub('bereinigung');
+  renderCustomRules();
+  alert('Regel hinzugef\u00fcgt. Unter \u201eBenutzerdefinierte Bereinigung\u201c ausf\u00fchren.');
 }
 
 async function customRulePreview(i) {
@@ -1474,10 +1526,11 @@ function renderSaFiles(files) {
     const pct = Math.round(f.bytes / maxB * 100);
     const col = pct > 80 ? 'var(--red)' : pct > 50 ? 'var(--yellow)' : 'var(--accent)';
     const dir = f.path.lastIndexOf('/') > 0 ? f.path.slice(0, f.path.lastIndexOf('/')) : '/';
-    html += '<div class="sa-row sa-link" data-d="' + esc(dir) + '" onclick="saOpenDir(this.dataset.d)" title="\u00d6ffne Ordner: ' + esc(dir) + '">' +
+    html += '<div class="sa-row sa-link" data-d="' + esc(dir) + '" data-f="' + esc(f.path) + '" onclick="saOpenDir(this.dataset.d)" title="\u00d6ffne Ordner: ' + esc(dir) + '">' +
       '<div><div class="sa-name sa-link" title="' + esc(f.path) + '">' + esc(f.path) + '</div>' +
       '<div class="sa-bar"><div class="sa-bar-fill" style="width:' + pct + '%;background:' + col + '"></div></div></div>' +
-      '<div class="sa-size-col" style="color:' + col + '">' + esc(f.size) + '</div></div>';
+      '<div class="sa-size-col" style="color:' + col + ';display:flex;align-items:center;gap:4px;justify-content:flex-end">' + esc(f.size) +
+      '<button class="btn btn-ghost btn-sm" style="padding:2px 6px;font-size:10px" data-path="' + esc(f.path) + '" onclick="event.stopPropagation();saAddCleanRule(this.dataset.path,0)" title="Zur Bereinigung hinzuf\u00fcgen">\u1F9F9</button></div></div>';
   });
   el.innerHTML = html;
 }
@@ -1689,7 +1742,11 @@ async function saveCrontab() {
 
 // ── Log Viewer ─────────────────────────────────────────────────────────────
 let _rawLogs = [];
+let _logWs = null;
+let _logLiveTimer = null;
+
 async function loadLogs() {
+  stopLogLive(false);
   const source = document.getElementById('log-source').value;
   const lines  = document.getElementById('log-lines').value || 200;
   const box = document.getElementById('log-box');
@@ -1698,7 +1755,56 @@ async function loadLogs() {
     const d = await fetchJSON(\`/api/logs?source=\${source}&lines=\${lines}\`);
     _rawLogs = d.lines || []; applyLogFilter();
     document.getElementById('log-info').textContent = \`\${_rawLogs.length} Zeilen (\${source})\`;
+    if (document.getElementById('log-live').checked) startLogLive();
   } catch(e) { box.innerHTML = '<span style="color:var(--red)">Fehler: ' + esc(e.message) + '</span>'; }
+}
+
+function onLogAutoscrollChange() {
+  if (document.getElementById('log-autoscroll').checked) applyLogFilter();
+}
+
+function toggleLogLive() {
+  if (document.getElementById('log-live').checked) startLogLive();
+  else stopLogLive(true);
+}
+
+function startLogLive() {
+  if (!window.WebSocket) return;
+  stopLogLive(false);
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  _logWs = new WebSocket(proto + '//' + location.host + '/ws/logs');
+  _logWs.onopen = () => {
+    _logWs.send(JSON.stringify({
+      action: 'subscribe',
+      source: document.getElementById('log-source').value,
+      lines:  parseInt(document.getElementById('log-lines').value || '200', 10),
+    }));
+    document.getElementById('log-info').textContent = 'Live verbunden';
+  };
+  _logWs.onmessage = (e) => {
+    try {
+      const d = JSON.parse(e.data);
+      if (d.type === 'append' && d.lines && d.lines.length) {
+        _rawLogs.push(...d.lines);
+        const max = parseInt(document.getElementById('log-lines').value || '200', 10);
+        if (_rawLogs.length > max) _rawLogs = _rawLogs.slice(-max);
+        applyLogFilter();
+        document.getElementById('log-info').textContent = \`\${_rawLogs.length} Zeilen (live)\`;
+      }
+    } catch(_) {}
+  };
+  _logWs.onclose = () => {
+    if (document.getElementById('log-live').checked) {
+      _logLiveTimer = setTimeout(() => { if (document.getElementById('log-live').checked) startLogLive(); }, 3000);
+    }
+  };
+  _logWs.onerror = () => { document.getElementById('log-info').textContent = 'Live-Verbindung fehlgeschlagen'; };
+}
+
+function stopLogLive(uncheck) {
+  if (_logLiveTimer) { clearTimeout(_logLiveTimer); _logLiveTimer = null; }
+  if (_logWs) { try { _logWs.close(); } catch(_) {} _logWs = null; }
+  if (uncheck) document.getElementById('log-live').checked = false;
 }
 function applyLogFilter() {
   const filterVal = document.getElementById('log-filter').value;
@@ -1797,8 +1903,8 @@ async function doUpdate() {
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
-async function fetchJSON(url) { const r = await fetch(url); return r.json(); }
-async function postJSON(url, data) { const r = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data||{}) }); return r.json(); }
+async function fetchJSON(url) { const r = await fetch(url, { credentials: 'same-origin' }); return r.json(); }
+async function postJSON(url, data) { const r = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data||{}), credentials: 'same-origin' }); return r.json(); }
 function fmtBytes(b) { if (!b) return '0 B'; const k=1024, s=['B','KB','MB','GB','TB'], i=Math.floor(Math.log(b)/Math.log(k)); return (b/Math.pow(k,i)).toFixed(1)+' '+s[i]; }
 function fmtUptime(s) { const d=Math.floor(s/86400), h=Math.floor((s%86400)/3600), m=Math.floor((s%3600)/60); return [d&&d+'d',h&&h+'h',m+'m'].filter(Boolean).join(' ')||'<1m'; }
 function fmtDate(ms) { if (!ms) return '-'; const d=new Date(ms); return d.toLocaleDateString('de-DE')+' '+d.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'}); }
@@ -1838,14 +1944,19 @@ class LinuxDashboard extends utils.Adapter {
         await this.setStateAsync('info.connection', { val: true, ack: true });
         getCpuUsage(); // initial snapshot for CPU diff
         await this._collectMetrics();
+        this._initCustomRules();
         this._startServer(port);
         const iv = parseInt(this.config.metricsInterval || 5, 10) * 1000;
         this._timer = setInterval(async () => { await this._collectMetrics(); await this._publishStates(); }, iv);
     }
 
     onUnload(callback) {
-        try { if (this._timer) clearInterval(this._timer); if (this._server) this._server.close(); callback(); }
-        catch (e) { callback(); }
+        try {
+            if (this._timer) clearInterval(this._timer);
+            if (this._wsServer) this._wsServer.close();
+            if (this._server) this._server.close();
+            callback();
+        } catch (e) { callback(); }
     }
 
     // ── HTTP Server ────────────────────────────────────────────────────────────
@@ -1857,10 +1968,134 @@ class LinuxDashboard extends utils.Adapter {
                 res.writeHead(500).end(JSON.stringify({ error: err.message }));
             });
         });
+
+        if (WebSocketServer) {
+            this._wsServer = new WebSocketServer({ noServer: true });
+            this._wsServer.on('connection', (ws) => this._onWsLogConnection(ws));
+            this._server.on('upgrade', (req, socket, head) => {
+                try {
+                    const pathname = new URL(req.url, `http://localhost:${port}`).pathname;
+                    if (pathname !== '/ws/logs') { socket.destroy(); return; }
+                    if (!this._checkHttpAuth(req)) {
+                        socket.write('HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm="Linux Dashboard"\r\n\r\n');
+                        socket.destroy();
+                        return;
+                    }
+                    this._wsServer.handleUpgrade(req, socket, head, (ws) => this._wsServer.emit('connection', ws, req));
+                } catch (_) { socket.destroy(); }
+            });
+        }
+
         this._server.listen(port, () => { this.log.info(`[SYSTEM] Web-UI: http://IP:${port}/`); });
     }
 
+    _safeEqual(a, b) {
+        const ba = Buffer.from(String(a));
+        const bb = Buffer.from(String(b));
+        if (ba.length !== bb.length) return false;
+        return crypto.timingSafeEqual(ba, bb);
+    }
+
+    _checkHttpAuth(req, res) {
+        if (!this.config.httpAuthEnabled) return true;
+        const user = this.config.httpAuthUser || '';
+        const pass = this.config.httpAuthPassword || '';
+        if (!user || !pass) return true;
+        const hdr = req.headers.authorization || '';
+        if (!hdr.startsWith('Basic ')) {
+            if (res) {
+                res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="Linux Dashboard"' });
+                res.end('Unauthorized');
+            }
+            return false;
+        }
+        const decoded = Buffer.from(hdr.slice(6), 'base64').toString('utf8');
+        const colon = decoded.indexOf(':');
+        const u = colon >= 0 ? decoded.slice(0, colon) : decoded;
+        const p = colon >= 0 ? decoded.slice(colon + 1) : '';
+        if (!this._safeEqual(u, user) || !this._safeEqual(p, pass)) {
+            if (res) {
+                res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="Linux Dashboard"' });
+                res.end('Unauthorized');
+            }
+            return false;
+        }
+        return true;
+    }
+
+    _customRulesPath() {
+        const base = path.join(utils.controllerDir || '/opt/iobroker', 'iobroker-data', this.namespace || 'linuxdashboard.0');
+        return path.join(base, 'custom-rules.json');
+    }
+
+    _initCustomRules() {
+        const fp = this._customRulesPath();
+        if (fs.existsSync(fp)) return;
+        try {
+            const fromConfig = JSON.parse(this.config.customCleanRules || '[]');
+            if (Array.isArray(fromConfig) && fromConfig.length) {
+                fs.mkdirSync(path.dirname(fp), { recursive: true });
+                fs.writeFileSync(fp, JSON.stringify(fromConfig, null, 2), 'utf8');
+            }
+        } catch (_) {}
+    }
+
+    _readCustomRules() {
+        try {
+            const fp = this._customRulesPath();
+            if (!fs.existsSync(fp)) return [];
+            const data = JSON.parse(fs.readFileSync(fp, 'utf8'));
+            return Array.isArray(data) ? data : [];
+        } catch (_) { return []; }
+    }
+
+    _writeCustomRules(rules) {
+        const fp = this._customRulesPath();
+        fs.mkdirSync(path.dirname(fp), { recursive: true });
+        fs.writeFileSync(fp, JSON.stringify(rules, null, 2), 'utf8');
+    }
+
+    _onWsLogConnection(ws) {
+        let timer = null;
+        let prevCount = 0;
+        let source = 'syslog';
+        let maxLines = 200;
+
+        const poll = async () => {
+            if (ws.readyState !== WebSocket.OPEN) return;
+            try {
+                const data = await this._getLogs(source, maxLines);
+                const lines = data.lines || [];
+                const newLines = lines.length >= prevCount ? lines.slice(prevCount) : lines;
+                prevCount = lines.length;
+                if (newLines.length) ws.send(JSON.stringify({ type: 'append', lines: newLines }));
+            } catch (_) {}
+        };
+
+        ws.on('message', (raw) => {
+            try {
+                const msg = JSON.parse(String(raw));
+                if (msg.action === 'subscribe') {
+                    source = msg.source || 'syslog';
+                    maxLines = Math.min(parseInt(msg.lines || '200', 10), 5000);
+                    prevCount = 0;
+                    if (timer) clearInterval(timer);
+                    poll();
+                    timer = setInterval(poll, 3000);
+                }
+                if (msg.action === 'unsubscribe' && timer) {
+                    clearInterval(timer);
+                    timer = null;
+                }
+            } catch (_) {}
+        });
+
+        ws.on('close', () => { if (timer) clearInterval(timer); });
+    }
+
     async _route(req, res, url) {
+        if (!this._checkHttpAuth(req, res)) return;
+
         const p   = url.pathname;
         const m   = req.method;
         const root = this.config.filemanagerRoot || '/';
@@ -1999,6 +2234,18 @@ class LinuxDashboard extends utils.Adapter {
 
         // ── Bereinigung
         if (p === '/api/sudo-status' && m === 'GET') return this._json(res, await this._sudoStatus());
+        if (p === '/api/custom-rules' && m === 'GET') return this._json(res, { rules: this._readCustomRules() });
+        if (p === '/api/custom-rules' && m === 'POST') {
+            const body = JSON.parse(await this._readBody(req));
+            if (!Array.isArray(body.rules)) return this._json(res, { error: 'Ungültig' }, 400);
+            const rules = body.rules.map(r => ({
+                path: String(r.path || '').slice(0, 500),
+                days: Math.max(0, parseInt(r.days || '0', 10) || 0),
+            })).filter(r => r.path);
+            this._writeCustomRules(rules);
+            this._addLog('INFO', `Bereinigungsregeln gespeichert (${rules.length})`);
+            return this._json(res, { ok: true, rules });
+        }
         if (p === '/api/clean-preview' && m === 'GET') return this._json(res, await this._cleanPreview(url.searchParams));
         if (p === '/api/clean-run'     && m === 'POST') {
             const body = JSON.parse(await this._readBody(req));
@@ -2077,18 +2324,19 @@ class LinuxDashboard extends utils.Adapter {
         });
     }
 
-    _serviceAction(name, action) {
-        return new Promise(resolve => {
-            if (!['start','stop','restart','status','enable','disable'].includes(action))
-                return resolve({ ok: false, error: 'Ungültige Aktion' });
-            // Sanitize service name
-            const safe = name.replace(/[^a-zA-Z0-9.\-_@]/g, '');
-            const cmd = `systemctl ${action} ${safe}.service 2>&1 || true`;
-            this._addLog('INFO', `service ${action} ${safe}`);
-            exec(cmd, { timeout: 30000 }, (err, stdout, stderr) => {
-                resolve({ ok: true, stdout: stdout||'', stderr: stderr||'' });
-            });
-        });
+    async _serviceAction(name, action) {
+        if (!['start','stop','restart','status','enable','disable'].includes(action))
+            return { ok: false, error: 'Ungültige Aktion' };
+        const safe = name.replace(/[^a-zA-Z0-9.\-_@]/g, '');
+        const cmd = `systemctl ${action} ${safe}.service 2>&1`;
+        this._addLog('INFO', `service ${action} ${safe}`);
+        if (['start','stop','restart','enable','disable'].includes(action)) {
+            const result = await this._privilegedShell(cmd);
+            if (result.sudoError) return { ok: false, stdout: '', stderr: result.error, error: result.error };
+            return { ok: result.ok, stdout: result.output, stderr: '', warning: !!result.warning };
+        }
+        const result = await this._cmdExec(cmd, 30000);
+        return { ok: result.exitCode === 0, stdout: result.output, stderr: '' };
     }
 
     // ── Package Manager ────────────────────────────────────────────────────────
@@ -2127,25 +2375,23 @@ class LinuxDashboard extends utils.Adapter {
         });
     }
 
-    _aptAction(pkg, action) {
-        return new Promise(resolve => {
-            let cmd = '';
-            if (action === 'update') {
-                cmd = 'apt-get update 2>&1';
-            } else if (action === 'install' && pkg) {
-                const safe = pkg.replace(/[^a-zA-Z0-9.\-_+]/g, '');
-                cmd = `DEBIAN_FRONTEND=noninteractive apt-get install -y "${safe}" 2>&1`;
-            } else if (action === 'remove' && pkg) {
-                const safe = pkg.replace(/[^a-zA-Z0-9.\-_+]/g, '');
-                cmd = `DEBIAN_FRONTEND=noninteractive apt-get remove -y "${safe}" 2>&1`;
-            } else {
-                return resolve({ ok: false, error: 'Ungültige Aktion' });
-            }
-            this._addLog('INFO', `apt ${action} ${pkg || ''}`);
-            exec(cmd, { timeout: 120000, maxBuffer: 2*1024*1024 }, (err, stdout, stderr) => {
-                resolve({ ok: !err, stdout: stdout||'', stderr: stderr||'', error: err ? err.message : null });
-            });
-        });
+    async _aptAction(pkg, action) {
+        let cmd = '';
+        if (action === 'update') {
+            cmd = 'apt-get update 2>&1';
+        } else if (action === 'install' && pkg) {
+            const safe = pkg.replace(/[^a-zA-Z0-9.\-_+]/g, '');
+            cmd = `DEBIAN_FRONTEND=noninteractive apt-get install -y "${safe}" 2>&1`;
+        } else if (action === 'remove' && pkg) {
+            const safe = pkg.replace(/[^a-zA-Z0-9.\-_+]/g, '');
+            cmd = `DEBIAN_FRONTEND=noninteractive apt-get remove -y "${safe}" 2>&1`;
+        } else {
+            return { ok: false, error: 'Ungültige Aktion' };
+        }
+        this._addLog('INFO', `apt ${action} ${pkg || ''}`);
+        const result = await this._privilegedShell(cmd);
+        if (result.sudoError) return { ok: false, stdout: '', stderr: result.error, error: result.error };
+        return { ok: result.ok, stdout: result.output, stderr: '', error: result.ok ? null : 'apt fehlgeschlagen', warning: !!result.warning };
     }
 
     // ── Cron Editor ────────────────────────────────────────────────────────────
@@ -2455,14 +2701,14 @@ class LinuxDashboard extends utils.Adapter {
 
     _sudoersHint() {
         const user = this._runUser();
-        return `# Als root ausführen:\necho '${user} ALL=(ALL) NOPASSWD: /usr/bin/find, /bin/rm, /usr/bin/journalctl, /usr/bin/apt-get, /usr/bin/apt, /usr/bin/du, /bin/ls' | sudo tee /etc/sudoers.d/iobroker-cleanup\nsudo chmod 440 /etc/sudoers.d/iobroker-cleanup`;
+        return `# Als root ausführen:\necho '${user} ALL=(ALL) NOPASSWD: /usr/bin/find, /bin/rm, /usr/bin/journalctl, /usr/bin/apt-get, /usr/bin/apt, /usr/bin/du, /bin/ls, /bin/systemctl, /usr/bin/systemctl' | sudo tee /etc/sudoers.d/iobroker-cleanup\nsudo chmod 440 /etc/sudoers.d/iobroker-cleanup`;
     }
 
     async _sudoStatus() {
         const result = await this._cmdExec('sudo -n true 2>&1', 5000);
         const output = result.output;
         if (output.includes('sudo: a password is required')) {
-            return { ok: false, message: 'Passwordloses sudo fehlt – Bereinigung von /var/log und System-Caches schlägt oft fehl.', hint: this._sudoersHint() };
+            return { ok: false, message: 'Passwordloses sudo fehlt – Bereinigung, Dienste und Pakete benötigen sudo.', hint: this._sudoersHint() };
         }
         if (output.includes('sudo: command not found')) {
             return { ok: false, message: 'sudo ist nicht installiert.', hint: null };
@@ -2471,6 +2717,10 @@ class LinuxDashboard extends utils.Adapter {
             return { ok: false, message: 'sudo-Zugriff verweigert.', hint: this._sudoersHint() };
         }
         return { ok: true, user: this._runUser() };
+    }
+
+    _iobrokerLogDir() {
+        return '/opt/iobroker/log';
     }
 
     _oldLogFindExpr() {
@@ -2536,6 +2786,19 @@ class LinuxDashboard extends utils.Adapter {
                 const sh    = await this._shellOut("du -sh /var/log/journal | cut -f1");
                 return { preview: cur.trim() + `\n${files.trim()} Journal-Dateien`, bytes: parseInt(bytes) || 0, sizeHuman: sh.trim(), ...sudoMeta };
             }
+            if (type === 'iobrokerlogs') {
+                const dir   = this._iobrokerLogDir();
+                const expr  = this._oldLogFindExpr();
+                const list  = await this._shellOut(`find ${dir} ${expr} 2>/dev/null | head -30`);
+                const bytes = await this._shellOut(`find ${dir} ${expr} -printf '%s\\n' 2>/dev/null | awk '{s+=$1}END{print s+0}'`);
+                const count = await this._shellOut(`find ${dir} ${expr} 2>/dev/null | wc -l`);
+                return {
+                    preview: `${count.trim()} Dateien in ${dir}:\n${list.trim() || '(keine gefunden)'}`,
+                    bytes: parseInt(bytes) || 0,
+                    sizeHuman: this._fmtBytes(parseInt(bytes) || 0),
+                    ...sudoMeta,
+                };
+            }
             if (type === 'oldlogs') {
                 const expr  = this._oldLogFindExpr();
                 const list  = await this._shellOut(`find /var/log ${expr} 2>/dev/null | head -30`);
@@ -2586,6 +2849,8 @@ class LinuxDashboard extends utils.Adapter {
                 const mb   = parseInt(params.maxSizeMB || '500', 10);
                 const days = parseInt(params.maxDays   || '30',  10);
                 result = await this._privilegedShell(`journalctl --vacuum-size=${mb}M 2>&1 && journalctl --vacuum-time=${days}d 2>&1 && echo "✔ Journal bereinigt"`);
+            } else if (type === 'iobrokerlogs') {
+                result = await this._deleteMatchedFiles(this._iobrokerLogDir(), this._oldLogFindExpr());
             } else if (type === 'oldlogs') {
                 result = await this._deleteMatchedFiles('/var/log', this._oldLogFindExpr());
             } else if (type === 'tmp') {
@@ -2597,11 +2862,12 @@ class LinuxDashboard extends utils.Adapter {
                 result = { ok: true, output: output.trim(), warning: false };
             } else if (type === 'custom') {
                 const rules = JSON.parse(params.rules || '[]');
-                if (!rules.length) return { output: 'Keine Regeln definiert' };
+                const effective = rules.length ? rules : this._readCustomRules();
+                if (!effective.length) return { output: 'Keine Regeln definiert' };
                 const outputs = [];
                 let warning = false;
                 let sudoError = false;
-                for (const r of rules) {
+                for (const r of effective) {
                     const safePath = String(r.path || '').replace(/["'`$\\]/g, '');
                     if (!safePath) continue;
                     const mtime = r.days > 0 ? `-mtime +${r.days}` : '';
