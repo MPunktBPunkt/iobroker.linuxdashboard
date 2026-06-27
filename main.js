@@ -7,6 +7,7 @@ const os       = require('os');
 const fs       = require('fs');
 const path     = require('path');
 const { exec } = require('child_process');
+const crypto   = require('crypto');
 
 let WebSocket, WebSocketServer;
 try {
@@ -15,7 +16,7 @@ try {
     WebSocketServer = ws.WebSocketServer || ws.Server;
 } catch (_) { WebSocket = null; WebSocketServer = null; }
 
-const ADAPTER_VERSION = '0.6.0';
+const ADAPTER_VERSION = '0.7.0';
 const GITHUB_REPO     = 'MPunktBPunkt/iobroker.linuxdashboard';
 
 // ── CPU diff ──────────────────────────────────────────────────────────────────
@@ -89,6 +90,7 @@ a{color:var(--accent);text-decoration:none}
   letter-spacing:.8px;margin-bottom:16px;display:flex;align-items:center;gap:8px}
 .card-title .dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
 .grid{display:grid;gap:16px}.grid-2{grid-template-columns:1fr 1fr}.grid-3{grid-template-columns:1fr 1fr 1fr}.grid-4{grid-template-columns:repeat(4,1fr)}
+@media(max-width:900px){.grid-2,.grid-3,.grid-4{grid-template-columns:1fr}.tabs{overflow-x:auto;flex-wrap:nowrap}.content{padding:16px}.header{padding:0 16px}.sys-subnav{overflow-x:auto}}
 /* Gauge */
 .gauge-wrap{display:flex;flex-direction:column;align-items:center;gap:8px}
 .gauge-svg{transform:rotate(-90deg)}
@@ -225,6 +227,10 @@ a{color:var(--accent);text-decoration:none}
 .clean-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .clean-size-badge{font-family:var(--mono);font-size:12px;color:var(--yellow);font-weight:600;padding:3px 8px;
   background:var(--bg3);border-radius:var(--rs);display:none}
+.clean-sudo-banner{margin-bottom:12px;padding:12px 16px;border-radius:var(--r);font-size:12px;line-height:1.5;border:1px solid var(--border)}
+.clean-sudo-banner.ok{background:#3fb95015;border-color:#3fb95040;color:var(--green)}
+.clean-sudo-banner.warn{background:#e3b34115;border-color:#e3b34140;color:var(--yellow)}
+.clean-sudo-banner code{font-family:var(--mono);font-size:11px;display:block;margin-top:8px;padding:8px;background:var(--bg1);border-radius:var(--rs);white-space:pre-wrap;color:var(--text)}
 .custom-rule-row{display:flex;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border2)}
 /* Storage Analyzer */
 .sa-row{display:grid;grid-template-columns:minmax(0,1fr) 80px;align-items:center;gap:8px;
@@ -501,7 +507,10 @@ return `<!DOCTYPE html>
       <input type="text" id="log-filter" placeholder="Filter (Regex)..." style="width:200px" oninput="applyLogFilter()">
       <button class="btn btn-ghost btn-sm" onclick="loadLogs()">&#x21BB; Laden</button>
       <label style="display:flex;align-items:center;gap:6px;color:var(--muted);font-size:13px;cursor:pointer">
-        <input type="checkbox" id="log-autoscroll" checked> Auto-Scroll
+        <input type="checkbox" id="log-autoscroll" checked onchange="onLogAutoscrollChange()"> Auto-Scroll
+      </label>
+      <label style="display:flex;align-items:center;gap:6px;color:var(--muted);font-size:13px;cursor:pointer">
+        <input type="checkbox" id="log-live" onchange="toggleLogLive()"> Live
       </label>
       <button class="btn btn-ghost btn-sm" onclick="exportLogs()" style="margin-left:auto">&#x1F4E5; Export</button>
     </div>
@@ -563,6 +572,7 @@ return `<!DOCTYPE html>
   <!-- Bereinigung -->
   <div class="sys-panel" id="sys-bereinigung">
     <div class="content" style="padding:0">
+      <div id="sudo-status-banner" class="clean-sudo-banner" style="display:none"></div>
 
       <!-- APT Cache -->
       <div class="clean-rule">
@@ -606,13 +616,31 @@ return `<!DOCTYPE html>
         </div>
       </div>
 
+      <!-- ioBroker Logs -->
+      <div class="clean-rule">
+        <div class="clean-rule-header">
+          <span class="clean-rule-icon">&#x1F4E6;</span>
+          <div>
+            <div class="clean-rule-title">ioBroker Log-Dateien</div>
+            <div class="clean-rule-desc">Rotierte &amp; komprimierte Logs in /opt/iobroker/log</div>
+          </div>
+          <span class="clean-size-badge" id="iobrokerlogs-size"></span>
+        </div>
+        <div class="clean-preview" id="iobrokerlogs-preview">Vorschau laden...</div>
+        <div class="clean-result" id="iobrokerlogs-result"></div>
+        <div class="clean-actions">
+          <button class="btn btn-ghost btn-sm" onclick="cleanPreview('iobrokerlogs')">&#x1F50D; Vorschau</button>
+          <button class="btn btn-red btn-sm" onclick="cleanRun('iobrokerlogs')">&#x1F9F9; Bereinigen</button>
+        </div>
+      </div>
+
       <!-- Alte Log-Dateien -->
       <div class="clean-rule">
         <div class="clean-rule-header">
           <span class="clean-rule-icon">&#x1F5D1;</span>
           <div>
             <div class="clean-rule-title">Alte Log-Dateien l&ouml;schen</div>
-            <div class="clean-rule-desc">Komprimierte &amp; rotierte Logs in /var/log (*.gz, *.1, *.2 ...)</div>
+            <div class="clean-rule-desc">Komprimierte &amp; rotierte Logs in /var/log (*.gz, *.xz, *.1&ndash;*.20, *.old ...)</div>
           </div>
           <span class="clean-size-badge" id="oldlogs-size"></span>
         </div>
@@ -694,6 +722,7 @@ return `<!DOCTYPE html>
 
   <!-- Service Manager -->
   <div class="sys-panel" id="sys-services">
+    <div id="sudo-status-services" class="clean-sudo-banner" style="display:none;margin:0 0 12px"></div>
     <div class="card">
       <div class="card-title"><span class="dot" style="background:var(--green)"></span>Service Manager
         <div style="display:flex;gap:8px;margin-left:auto">
@@ -718,6 +747,7 @@ return `<!DOCTYPE html>
 
   <!-- Package Manager -->
   <div class="sys-panel" id="sys-packages">
+    <div id="sudo-status-packages" class="clean-sudo-banner" style="display:none;margin:0 0 12px"></div>
     <div class="card">
       <div class="card-title"><span class="dot" style="background:var(--accent)"></span>Package Manager (apt)
         <span style="color:var(--dim);font-size:11px;font-weight:400;margin-left:8px">&#x26A0;&#xFE0F; Erfordert sudo-Rechte</span>
@@ -894,6 +924,7 @@ function setGauge(id, pct, c1, c2, c3) {
 // ── Tab Navigation ─────────────────────────────────────────────────────────
 let _activeTab = 'daten', _activeSysSub = 'services';
 window.showTab = function(name) {
+  if (_activeTab === 'logs' && name !== 'logs') stopLogLive(false);
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.tab-btn').forEach(b => b.className = 'tab-btn');
   const panel = document.getElementById('tab-' + name);
@@ -916,9 +947,9 @@ window.showSysSub = function(name) {
   if (btn) btn.classList.add('active');
   _activeSysSub = name;
   if (name === 'speicher') { /* on-demand */ }
-  if (name === 'bereinigung') { loadAllCleanPreviews(); loadCustomRules(); }
-  if (name === 'services') loadServices();
-  if (name === 'packages') loadInstalledPackages();
+  if (name === 'bereinigung') { loadSudoStatus(); loadAllCleanPreviews(); loadCustomRules(); }
+  if (name === 'services') { loadSudoStatus('sudo-status-services'); loadServices(); }
+  if (name === 'packages') { loadSudoStatus('sudo-status-packages'); loadInstalledPackages(); }
   if (name === 'cron') loadCrontab();
   if (name === 'update') loadSysInfo();
 };
@@ -1303,14 +1334,15 @@ async function iobInstall() {
 
 
 // ── Bereinigung ────────────────────────────────────────────────────────────
-let _customRules = JSON.parse(localStorage.getItem('ld_custom_rules') || '[]');
+let _customRules = [];
 
 const CLEAN_DEFS = {
-  apt:     { label: 'APT-Cache' },
-  journal: { label: 'Journal' },
-  oldlogs: { label: 'Alte Logs' },
-  tmp:     { label: '/tmp' },
-  npm:     { label: 'npm Cache' },
+  apt:          { label: 'APT-Cache' },
+  journal:      { label: 'Journal' },
+  iobrokerlogs: { label: 'ioBroker Logs' },
+  oldlogs:      { label: 'Alte Logs' },
+  tmp:          { label: '/tmp' },
+  npm:          { label: 'npm Cache' },
 };
 
 function cleanParams(type) {
@@ -1327,10 +1359,34 @@ async function cleanPreview(type) {
   try {
     const d = await fetchJSON('/api/clean-preview?type=' + type + '&' + new URLSearchParams(cleanParams(type)));
     if (d.error) { previewEl.textContent = 'Fehler: ' + d.error; previewEl.className = 'clean-preview error'; return; }
-    previewEl.textContent = d.preview || 'Nichts zu bereinigen';
+    let text = d.preview || 'Nichts zu bereinigen';
+    if (d.sudoOk === false && d.bytes > 0) text += '\n\n\u26a0 Vorschau ohne sudo \u2013 L\u00f6schen kann fehlschlagen.';
+    if (d.notDeletable > 0) text += '\n\n\u26a0 ' + d.notDeletable + ' Datei(en) nicht l\u00f6schbar (fehlende Rechte).';
+    previewEl.textContent = text;
     previewEl.className = 'clean-preview' + (d.bytes > 0 ? ' has-data' : '');
     if (sizeEl) { sizeEl.textContent = d.sizeHuman || ''; sizeEl.style.display = d.bytes > 0 ? '' : 'none'; }
   } catch(e) { previewEl.textContent = 'Fehler: ' + e.message; previewEl.className = 'clean-preview error'; }
+}
+
+async function loadSudoStatus(targetId) {
+  const el = document.getElementById(targetId || 'sudo-status-banner');
+  if (!el) return;
+  try {
+    const d = await fetchJSON('/api/sudo-status');
+    el.style.display = '';
+    if (d.ok) {
+      el.className = 'clean-sudo-banner ok';
+      el.innerHTML = '\u2714 Passwordloses sudo ist aktiv' + (targetId ? ' \u2013 Dienste &amp; Pakete k\u00f6nnen verwaltet werden.' : ' \u2013 Bereinigung kann Systemdateien l\u00f6schen.');
+    } else {
+      el.className = 'clean-sudo-banner warn';
+      el.innerHTML = '\u26a0 ' + esc(d.message || 'Kein sudo-Zugriff') +
+        (d.hint ? '<code>' + esc(d.hint) + '</code>' : '');
+    }
+  } catch(e) {
+    el.style.display = '';
+    el.className = 'clean-sudo-banner warn';
+    el.textContent = 'sudo-Status konnte nicht gepr\u00fcft werden: ' + e.message;
+  }
 }
 
 async function cleanRun(type) {
@@ -1346,7 +1402,7 @@ async function cleanRun(type) {
     const d = await postJSON('/api/clean-run', { type, ...params });
     if (d.error) { resultEl.textContent = '\u2717 Fehler: ' + d.error; resultEl.style.color = 'var(--red)'; return; }
     resultEl.textContent = d.output || '\u2714 Fertig';
-    resultEl.style.color = 'var(--green)';
+    resultEl.style.color = d.warning ? 'var(--yellow)' : 'var(--green)';
     if (type !== 'custom') cleanPreview(type);
   } catch(e) { resultEl.textContent = 'Fehler: ' + e.message; resultEl.style.color = 'var(--red)'; }
 }
@@ -1355,10 +1411,25 @@ function loadAllCleanPreviews() {
   Object.keys(CLEAN_DEFS).forEach(type => cleanPreview(type));
 }
 
-// Custom rules
-function loadCustomRules() {
-  _customRules = JSON.parse(localStorage.getItem('ld_custom_rules') || '[]');
+// Custom rules (serverseitig gespeichert)
+let _customRules = [];
+
+async function loadCustomRules() {
+  try {
+    const d = await fetchJSON('/api/custom-rules');
+    _customRules = d.rules || [];
+    const legacy = JSON.parse(localStorage.getItem('ld_custom_rules') || '[]');
+    if (legacy.length && !_customRules.length) {
+      _customRules = legacy;
+      await postJSON('/api/custom-rules', { rules: _customRules });
+      localStorage.removeItem('ld_custom_rules');
+    }
+  } catch(_) { _customRules = []; }
   renderCustomRules();
+}
+
+async function saveCustomRules() {
+  await postJSON('/api/custom-rules', { rules: _customRules });
 }
 
 function renderCustomRules() {
@@ -1374,20 +1445,30 @@ function renderCustomRules() {
   ).join('');
 }
 
-function customRuleAdd() {
+async function customRuleAdd() {
   const pathVal = document.getElementById('custom-path').value.trim();
   const days    = parseInt(document.getElementById('custom-days').value || '0', 10);
   if (!pathVal) { alert('Bitte einen Pfad eingeben'); return; }
   _customRules.push({ path: pathVal, days });
-  localStorage.setItem('ld_custom_rules', JSON.stringify(_customRules));
+  await saveCustomRules();
   document.getElementById('custom-path').value = '';
   renderCustomRules();
 }
 
-function customRuleDelete(i) {
+async function customRuleDelete(i) {
   _customRules.splice(i, 1);
-  localStorage.setItem('ld_custom_rules', JSON.stringify(_customRules));
+  await saveCustomRules();
   renderCustomRules();
+}
+
+async function saAddCleanRule(filePath, days) {
+  if (!confirm('Bereinigungsregel f\u00fcr\\n' + filePath + '\\nhinzuf\u00fcgen?')) return;
+  _customRules.push({ path: filePath, days: days || 0 });
+  await saveCustomRules();
+  showTab('system');
+  showSysSub('bereinigung');
+  renderCustomRules();
+  alert('Regel hinzugef\u00fcgt. Unter \u201eBenutzerdefinierte Bereinigung\u201c ausf\u00fchren.');
 }
 
 async function customRulePreview(i) {
@@ -1445,10 +1526,11 @@ function renderSaFiles(files) {
     const pct = Math.round(f.bytes / maxB * 100);
     const col = pct > 80 ? 'var(--red)' : pct > 50 ? 'var(--yellow)' : 'var(--accent)';
     const dir = f.path.lastIndexOf('/') > 0 ? f.path.slice(0, f.path.lastIndexOf('/')) : '/';
-    html += '<div class="sa-row sa-link" data-d="' + esc(dir) + '" onclick="saOpenDir(this.dataset.d)" title="\u00d6ffne Ordner: ' + esc(dir) + '">' +
+    html += '<div class="sa-row sa-link" data-d="' + esc(dir) + '" data-f="' + esc(f.path) + '" onclick="saOpenDir(this.dataset.d)" title="\u00d6ffne Ordner: ' + esc(dir) + '">' +
       '<div><div class="sa-name sa-link" title="' + esc(f.path) + '">' + esc(f.path) + '</div>' +
       '<div class="sa-bar"><div class="sa-bar-fill" style="width:' + pct + '%;background:' + col + '"></div></div></div>' +
-      '<div class="sa-size-col" style="color:' + col + '">' + esc(f.size) + '</div></div>';
+      '<div class="sa-size-col" style="color:' + col + ';display:flex;align-items:center;gap:4px;justify-content:flex-end">' + esc(f.size) +
+      '<button class="btn btn-ghost btn-sm" style="padding:2px 6px;font-size:10px" data-path="' + esc(f.path) + '" onclick="event.stopPropagation();saAddCleanRule(this.dataset.path,0)" title="Zur Bereinigung hinzuf\u00fcgen">\u1F9F9</button></div></div>';
   });
   el.innerHTML = html;
 }
@@ -1660,7 +1742,11 @@ async function saveCrontab() {
 
 // ── Log Viewer ─────────────────────────────────────────────────────────────
 let _rawLogs = [];
+let _logWs = null;
+let _logLiveTimer = null;
+
 async function loadLogs() {
+  stopLogLive(false);
   const source = document.getElementById('log-source').value;
   const lines  = document.getElementById('log-lines').value || 200;
   const box = document.getElementById('log-box');
@@ -1669,7 +1755,56 @@ async function loadLogs() {
     const d = await fetchJSON(\`/api/logs?source=\${source}&lines=\${lines}\`);
     _rawLogs = d.lines || []; applyLogFilter();
     document.getElementById('log-info').textContent = \`\${_rawLogs.length} Zeilen (\${source})\`;
+    if (document.getElementById('log-live').checked) startLogLive();
   } catch(e) { box.innerHTML = '<span style="color:var(--red)">Fehler: ' + esc(e.message) + '</span>'; }
+}
+
+function onLogAutoscrollChange() {
+  if (document.getElementById('log-autoscroll').checked) applyLogFilter();
+}
+
+function toggleLogLive() {
+  if (document.getElementById('log-live').checked) startLogLive();
+  else stopLogLive(true);
+}
+
+function startLogLive() {
+  if (!window.WebSocket) return;
+  stopLogLive(false);
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  _logWs = new WebSocket(proto + '//' + location.host + '/ws/logs');
+  _logWs.onopen = () => {
+    _logWs.send(JSON.stringify({
+      action: 'subscribe',
+      source: document.getElementById('log-source').value,
+      lines:  parseInt(document.getElementById('log-lines').value || '200', 10),
+    }));
+    document.getElementById('log-info').textContent = 'Live verbunden';
+  };
+  _logWs.onmessage = (e) => {
+    try {
+      const d = JSON.parse(e.data);
+      if (d.type === 'append' && d.lines && d.lines.length) {
+        _rawLogs.push(...d.lines);
+        const max = parseInt(document.getElementById('log-lines').value || '200', 10);
+        if (_rawLogs.length > max) _rawLogs = _rawLogs.slice(-max);
+        applyLogFilter();
+        document.getElementById('log-info').textContent = \`\${_rawLogs.length} Zeilen (live)\`;
+      }
+    } catch(_) {}
+  };
+  _logWs.onclose = () => {
+    if (document.getElementById('log-live').checked) {
+      _logLiveTimer = setTimeout(() => { if (document.getElementById('log-live').checked) startLogLive(); }, 3000);
+    }
+  };
+  _logWs.onerror = () => { document.getElementById('log-info').textContent = 'Live-Verbindung fehlgeschlagen'; };
+}
+
+function stopLogLive(uncheck) {
+  if (_logLiveTimer) { clearTimeout(_logLiveTimer); _logLiveTimer = null; }
+  if (_logWs) { try { _logWs.close(); } catch(_) {} _logWs = null; }
+  if (uncheck) document.getElementById('log-live').checked = false;
 }
 function applyLogFilter() {
   const filterVal = document.getElementById('log-filter').value;
@@ -1768,8 +1903,8 @@ async function doUpdate() {
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
-async function fetchJSON(url) { const r = await fetch(url); return r.json(); }
-async function postJSON(url, data) { const r = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data||{}) }); return r.json(); }
+async function fetchJSON(url) { const r = await fetch(url, { credentials: 'same-origin' }); return r.json(); }
+async function postJSON(url, data) { const r = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data||{}), credentials: 'same-origin' }); return r.json(); }
 function fmtBytes(b) { if (!b) return '0 B'; const k=1024, s=['B','KB','MB','GB','TB'], i=Math.floor(Math.log(b)/Math.log(k)); return (b/Math.pow(k,i)).toFixed(1)+' '+s[i]; }
 function fmtUptime(s) { const d=Math.floor(s/86400), h=Math.floor((s%86400)/3600), m=Math.floor((s%3600)/60); return [d&&d+'d',h&&h+'h',m+'m'].filter(Boolean).join(' ')||'<1m'; }
 function fmtDate(ms) { if (!ms) return '-'; const d=new Date(ms); return d.toLocaleDateString('de-DE')+' '+d.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'}); }
@@ -1809,14 +1944,19 @@ class LinuxDashboard extends utils.Adapter {
         await this.setStateAsync('info.connection', { val: true, ack: true });
         getCpuUsage(); // initial snapshot for CPU diff
         await this._collectMetrics();
+        this._initCustomRules();
         this._startServer(port);
         const iv = parseInt(this.config.metricsInterval || 5, 10) * 1000;
         this._timer = setInterval(async () => { await this._collectMetrics(); await this._publishStates(); }, iv);
     }
 
     onUnload(callback) {
-        try { if (this._timer) clearInterval(this._timer); if (this._server) this._server.close(); callback(); }
-        catch (e) { callback(); }
+        try {
+            if (this._timer) clearInterval(this._timer);
+            if (this._wsServer) this._wsServer.close();
+            if (this._server) this._server.close();
+            callback();
+        } catch (e) { callback(); }
     }
 
     // ── HTTP Server ────────────────────────────────────────────────────────────
@@ -1828,10 +1968,134 @@ class LinuxDashboard extends utils.Adapter {
                 res.writeHead(500).end(JSON.stringify({ error: err.message }));
             });
         });
+
+        if (WebSocketServer) {
+            this._wsServer = new WebSocketServer({ noServer: true });
+            this._wsServer.on('connection', (ws) => this._onWsLogConnection(ws));
+            this._server.on('upgrade', (req, socket, head) => {
+                try {
+                    const pathname = new URL(req.url, `http://localhost:${port}`).pathname;
+                    if (pathname !== '/ws/logs') { socket.destroy(); return; }
+                    if (!this._checkHttpAuth(req)) {
+                        socket.write('HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm="Linux Dashboard"\r\n\r\n');
+                        socket.destroy();
+                        return;
+                    }
+                    this._wsServer.handleUpgrade(req, socket, head, (ws) => this._wsServer.emit('connection', ws, req));
+                } catch (_) { socket.destroy(); }
+            });
+        }
+
         this._server.listen(port, () => { this.log.info(`[SYSTEM] Web-UI: http://IP:${port}/`); });
     }
 
+    _safeEqual(a, b) {
+        const ba = Buffer.from(String(a));
+        const bb = Buffer.from(String(b));
+        if (ba.length !== bb.length) return false;
+        return crypto.timingSafeEqual(ba, bb);
+    }
+
+    _checkHttpAuth(req, res) {
+        if (!this.config.httpAuthEnabled) return true;
+        const user = this.config.httpAuthUser || '';
+        const pass = this.config.httpAuthPassword || '';
+        if (!user || !pass) return true;
+        const hdr = req.headers.authorization || '';
+        if (!hdr.startsWith('Basic ')) {
+            if (res) {
+                res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="Linux Dashboard"' });
+                res.end('Unauthorized');
+            }
+            return false;
+        }
+        const decoded = Buffer.from(hdr.slice(6), 'base64').toString('utf8');
+        const colon = decoded.indexOf(':');
+        const u = colon >= 0 ? decoded.slice(0, colon) : decoded;
+        const p = colon >= 0 ? decoded.slice(colon + 1) : '';
+        if (!this._safeEqual(u, user) || !this._safeEqual(p, pass)) {
+            if (res) {
+                res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="Linux Dashboard"' });
+                res.end('Unauthorized');
+            }
+            return false;
+        }
+        return true;
+    }
+
+    _customRulesPath() {
+        const base = path.join(utils.controllerDir || '/opt/iobroker', 'iobroker-data', this.namespace || 'linuxdashboard.0');
+        return path.join(base, 'custom-rules.json');
+    }
+
+    _initCustomRules() {
+        const fp = this._customRulesPath();
+        if (fs.existsSync(fp)) return;
+        try {
+            const fromConfig = JSON.parse(this.config.customCleanRules || '[]');
+            if (Array.isArray(fromConfig) && fromConfig.length) {
+                fs.mkdirSync(path.dirname(fp), { recursive: true });
+                fs.writeFileSync(fp, JSON.stringify(fromConfig, null, 2), 'utf8');
+            }
+        } catch (_) {}
+    }
+
+    _readCustomRules() {
+        try {
+            const fp = this._customRulesPath();
+            if (!fs.existsSync(fp)) return [];
+            const data = JSON.parse(fs.readFileSync(fp, 'utf8'));
+            return Array.isArray(data) ? data : [];
+        } catch (_) { return []; }
+    }
+
+    _writeCustomRules(rules) {
+        const fp = this._customRulesPath();
+        fs.mkdirSync(path.dirname(fp), { recursive: true });
+        fs.writeFileSync(fp, JSON.stringify(rules, null, 2), 'utf8');
+    }
+
+    _onWsLogConnection(ws) {
+        let timer = null;
+        let prevCount = 0;
+        let source = 'syslog';
+        let maxLines = 200;
+
+        const poll = async () => {
+            if (ws.readyState !== WebSocket.OPEN) return;
+            try {
+                const data = await this._getLogs(source, maxLines);
+                const lines = data.lines || [];
+                const newLines = lines.length >= prevCount ? lines.slice(prevCount) : lines;
+                prevCount = lines.length;
+                if (newLines.length) ws.send(JSON.stringify({ type: 'append', lines: newLines }));
+            } catch (_) {}
+        };
+
+        ws.on('message', (raw) => {
+            try {
+                const msg = JSON.parse(String(raw));
+                if (msg.action === 'subscribe') {
+                    source = msg.source || 'syslog';
+                    maxLines = Math.min(parseInt(msg.lines || '200', 10), 5000);
+                    prevCount = 0;
+                    if (timer) clearInterval(timer);
+                    poll();
+                    timer = setInterval(poll, 3000);
+                }
+                if (msg.action === 'unsubscribe' && timer) {
+                    clearInterval(timer);
+                    timer = null;
+                }
+            } catch (_) {}
+        });
+
+        ws.on('close', () => { if (timer) clearInterval(timer); });
+    }
+
     async _route(req, res, url) {
+        if (!this._checkHttpAuth(req, res)) return;
+
         const p   = url.pathname;
         const m   = req.method;
         const root = this.config.filemanagerRoot || '/';
@@ -1969,6 +2233,19 @@ class LinuxDashboard extends utils.Adapter {
         }
 
         // ── Bereinigung
+        if (p === '/api/sudo-status' && m === 'GET') return this._json(res, await this._sudoStatus());
+        if (p === '/api/custom-rules' && m === 'GET') return this._json(res, { rules: this._readCustomRules() });
+        if (p === '/api/custom-rules' && m === 'POST') {
+            const body = JSON.parse(await this._readBody(req));
+            if (!Array.isArray(body.rules)) return this._json(res, { error: 'Ungültig' }, 400);
+            const rules = body.rules.map(r => ({
+                path: String(r.path || '').slice(0, 500),
+                days: Math.max(0, parseInt(r.days || '0', 10) || 0),
+            })).filter(r => r.path);
+            this._writeCustomRules(rules);
+            this._addLog('INFO', `Bereinigungsregeln gespeichert (${rules.length})`);
+            return this._json(res, { ok: true, rules });
+        }
         if (p === '/api/clean-preview' && m === 'GET') return this._json(res, await this._cleanPreview(url.searchParams));
         if (p === '/api/clean-run'     && m === 'POST') {
             const body = JSON.parse(await this._readBody(req));
@@ -2047,18 +2324,19 @@ class LinuxDashboard extends utils.Adapter {
         });
     }
 
-    _serviceAction(name, action) {
-        return new Promise(resolve => {
-            if (!['start','stop','restart','status','enable','disable'].includes(action))
-                return resolve({ ok: false, error: 'Ungültige Aktion' });
-            // Sanitize service name
-            const safe = name.replace(/[^a-zA-Z0-9.\-_@]/g, '');
-            const cmd = `systemctl ${action} ${safe}.service 2>&1 || true`;
-            this._addLog('INFO', `service ${action} ${safe}`);
-            exec(cmd, { timeout: 30000 }, (err, stdout, stderr) => {
-                resolve({ ok: true, stdout: stdout||'', stderr: stderr||'' });
-            });
-        });
+    async _serviceAction(name, action) {
+        if (!['start','stop','restart','status','enable','disable'].includes(action))
+            return { ok: false, error: 'Ungültige Aktion' };
+        const safe = name.replace(/[^a-zA-Z0-9.\-_@]/g, '');
+        const cmd = `systemctl ${action} ${safe}.service 2>&1`;
+        this._addLog('INFO', `service ${action} ${safe}`);
+        if (['start','stop','restart','enable','disable'].includes(action)) {
+            const result = await this._privilegedShell(cmd);
+            if (result.sudoError) return { ok: false, stdout: '', stderr: result.error, error: result.error };
+            return { ok: result.ok, stdout: result.output, stderr: '', warning: !!result.warning };
+        }
+        const result = await this._cmdExec(cmd, 30000);
+        return { ok: result.exitCode === 0, stdout: result.output, stderr: '' };
     }
 
     // ── Package Manager ────────────────────────────────────────────────────────
@@ -2097,25 +2375,23 @@ class LinuxDashboard extends utils.Adapter {
         });
     }
 
-    _aptAction(pkg, action) {
-        return new Promise(resolve => {
-            let cmd = '';
-            if (action === 'update') {
-                cmd = 'apt-get update 2>&1';
-            } else if (action === 'install' && pkg) {
-                const safe = pkg.replace(/[^a-zA-Z0-9.\-_+]/g, '');
-                cmd = `DEBIAN_FRONTEND=noninteractive apt-get install -y "${safe}" 2>&1`;
-            } else if (action === 'remove' && pkg) {
-                const safe = pkg.replace(/[^a-zA-Z0-9.\-_+]/g, '');
-                cmd = `DEBIAN_FRONTEND=noninteractive apt-get remove -y "${safe}" 2>&1`;
-            } else {
-                return resolve({ ok: false, error: 'Ungültige Aktion' });
-            }
-            this._addLog('INFO', `apt ${action} ${pkg || ''}`);
-            exec(cmd, { timeout: 120000, maxBuffer: 2*1024*1024 }, (err, stdout, stderr) => {
-                resolve({ ok: !err, stdout: stdout||'', stderr: stderr||'', error: err ? err.message : null });
-            });
-        });
+    async _aptAction(pkg, action) {
+        let cmd = '';
+        if (action === 'update') {
+            cmd = 'apt-get update 2>&1';
+        } else if (action === 'install' && pkg) {
+            const safe = pkg.replace(/[^a-zA-Z0-9.\-_+]/g, '');
+            cmd = `DEBIAN_FRONTEND=noninteractive apt-get install -y "${safe}" 2>&1`;
+        } else if (action === 'remove' && pkg) {
+            const safe = pkg.replace(/[^a-zA-Z0-9.\-_+]/g, '');
+            cmd = `DEBIAN_FRONTEND=noninteractive apt-get remove -y "${safe}" 2>&1`;
+        } else {
+            return { ok: false, error: 'Ungültige Aktion' };
+        }
+        this._addLog('INFO', `apt ${action} ${pkg || ''}`);
+        const result = await this._privilegedShell(cmd);
+        if (result.sudoError) return { ok: false, stdout: '', stderr: result.error, error: result.error };
+        return { ok: result.ok, stdout: result.output, stderr: '', error: result.ok ? null : 'apt fehlgeschlagen', warning: !!result.warning };
     }
 
     // ── Cron Editor ────────────────────────────────────────────────────────────
@@ -2419,52 +2695,145 @@ class LinuxDashboard extends utils.Adapter {
     }
 
     // ── Bereinigung ──────────────────────────────────────────────────────────
+    _runUser() {
+        return process.env.SUDO_USER || process.env.USER || 'iobroker';
+    }
+
+    _sudoersHint() {
+        const user = this._runUser();
+        return `# Als root ausführen:\necho '${user} ALL=(ALL) NOPASSWD: /usr/bin/find, /bin/rm, /usr/bin/journalctl, /usr/bin/apt-get, /usr/bin/apt, /usr/bin/du, /bin/ls, /bin/systemctl, /usr/bin/systemctl' | sudo tee /etc/sudoers.d/iobroker-cleanup\nsudo chmod 440 /etc/sudoers.d/iobroker-cleanup`;
+    }
+
+    async _sudoStatus() {
+        const result = await this._cmdExec('sudo -n true 2>&1', 5000);
+        const output = result.output;
+        if (output.includes('sudo: a password is required')) {
+            return { ok: false, message: 'Passwordloses sudo fehlt – Bereinigung, Dienste und Pakete benötigen sudo.', hint: this._sudoersHint() };
+        }
+        if (output.includes('sudo: command not found')) {
+            return { ok: false, message: 'sudo ist nicht installiert.', hint: null };
+        }
+        if (result.exitCode !== 0) {
+            return { ok: false, message: 'sudo-Zugriff verweigert.', hint: this._sudoersHint() };
+        }
+        return { ok: true, user: this._runUser() };
+    }
+
+    _iobrokerLogDir() {
+        return '/opt/iobroker/log';
+    }
+
+    _oldLogFindExpr() {
+        const parts = ["-name '*.gz'", "-name '*.xz'", "-name '*.bz2'", "-name '*.zst'", "-name '*.old'", "-name '*.bak'"];
+        for (let i = 1; i <= 20; i++) parts.push(`-name '*.${i}'`);
+        return `-type f \\( ${parts.join(' -o ')} \\)`;
+    }
+
+    async _privilegedShell(script, timeout = 120000) {
+        const status = await this._sudoStatus();
+        if (!status.ok) {
+            return { ok: false, sudoError: true, output: '', error: status.message + (status.hint ? '\n\n' + status.hint : '') };
+        }
+        const result = await this._cmdExec(`sudo -n sh -c ${JSON.stringify(script)}`, timeout);
+        const denied = /permission denied|cannot remove|operation not permitted|read-only file system/i.test(result.output);
+        return {
+            ok: !status.ok ? false : result.exitCode === 0 && !denied,
+            sudoError: false,
+            output: result.output,
+            warning: denied || (result.exitCode !== 0 && !/Gelöscht|geleert|bereinigt|✔/i.test(result.output)),
+            exitCode: result.exitCode,
+        };
+    }
+
+    async _shellOut(script, preferSudo = true, timeout = 60000) {
+        if (preferSudo) {
+            const status = await this._sudoStatus();
+            if (status.ok) return (await this._cmdExec(`sudo -n sh -c ${JSON.stringify(script)}`, timeout)).output;
+        }
+        return (await this._cmdExec(`sh -c ${JSON.stringify(script)}`, timeout)).output;
+    }
+
+    async _deleteMatchedFiles(baseDir, findExpr) {
+        const script = [
+            `cnt_before=$(find ${baseDir} ${findExpr} 2>/dev/null | wc -l)`,
+            'err_file=$(mktemp)',
+            `find ${baseDir} ${findExpr} -print0 2>/dev/null | xargs -0 -r rm -fv 2>"$err_file" || true`,
+            `cnt_after=$(find ${baseDir} ${findExpr} 2>/dev/null | wc -l)`,
+            'deleted=$((cnt_before - cnt_after))',
+            'echo "✔ $deleted von $cnt_before Dateien gelöscht"',
+            'if [ "$cnt_after" -gt 0 ]; then echo "⚠ $cnt_after Dateien konnten nicht gelöscht werden (Berechtigung oder gesperrt)"; fi',
+            'if [ -s "$err_file" ]; then echo "--- Fehlerdetails ---"; head -20 "$err_file"; fi',
+            'rm -f "$err_file"',
+        ].join('; ');
+        return this._privilegedShell(script);
+    }
+
     async _cleanPreview(params) {
         const type = params.get('type') || '';
-        // Helper: run with sudo if available, fallback without
-        const s = (cmd) => `sudo sh -c '${cmd}' 2>/dev/null || sh -c '${cmd}' 2>/dev/null`;
+        const sudoStatus = await this._sudoStatus();
+        const sudoMeta = { sudoOk: sudoStatus.ok };
         try {
             if (type === 'apt') {
-                const size  = await this._cmdOut(s("du -sh /var/cache/apt/archives/ | cut -f1"));
-                const bytes = await this._cmdOut(s("du -sb /var/cache/apt/archives/ | cut -f1"));
-                const list  = await this._cmdOut(s("ls /var/cache/apt/archives/*.deb 2>/dev/null | head -20 || echo '(keine .deb Dateien)'"));
-                return { preview: `Gr\u00f6\u00dfe: ${size.trim()}\n\n${list.trim()}`, bytes: parseInt(bytes) || 0, sizeHuman: size.trim() };
+                const size  = await this._shellOut("du -sh /var/cache/apt/archives/ | cut -f1");
+                const bytes = await this._shellOut("du -sb /var/cache/apt/archives/ | cut -f1");
+                const list  = await this._shellOut("ls /var/cache/apt/archives/*.deb 2>/dev/null | head -20 || echo '(keine .deb Dateien)'");
+                return { preview: `Gr\u00f6\u00dfe: ${size.trim()}\n\n${list.trim()}`, bytes: parseInt(bytes) || 0, sizeHuman: size.trim(), ...sudoMeta };
             }
             if (type === 'journal') {
                 const cur   = await this._cmdOut('journalctl --disk-usage 2>/dev/null || echo "N/A"');
-                const files = await this._cmdOut(s("find /var/log/journal -type f | wc -l"));
-                const bytes = await this._cmdOut(s("du -sb /var/log/journal | cut -f1 || echo 0"));
-                const sh    = await this._cmdOut(s("du -sh /var/log/journal | cut -f1"));
-                return { preview: cur.trim() + `\n${files.trim()} Journal-Dateien`, bytes: parseInt(bytes) || 0, sizeHuman: sh.trim() };
+                const files = await this._shellOut("find /var/log/journal -type f | wc -l");
+                const bytes = await this._shellOut("du -sb /var/log/journal | cut -f1 || echo 0");
+                const sh    = await this._shellOut("du -sh /var/log/journal | cut -f1");
+                return { preview: cur.trim() + `\n${files.trim()} Journal-Dateien`, bytes: parseInt(bytes) || 0, sizeHuman: sh.trim(), ...sudoMeta };
+            }
+            if (type === 'iobrokerlogs') {
+                const dir   = this._iobrokerLogDir();
+                const expr  = this._oldLogFindExpr();
+                const list  = await this._shellOut(`find ${dir} ${expr} 2>/dev/null | head -30`);
+                const bytes = await this._shellOut(`find ${dir} ${expr} -printf '%s\\n' 2>/dev/null | awk '{s+=$1}END{print s+0}'`);
+                const count = await this._shellOut(`find ${dir} ${expr} 2>/dev/null | wc -l`);
+                return {
+                    preview: `${count.trim()} Dateien in ${dir}:\n${list.trim() || '(keine gefunden)'}`,
+                    bytes: parseInt(bytes) || 0,
+                    sizeHuman: this._fmtBytes(parseInt(bytes) || 0),
+                    ...sudoMeta,
+                };
             }
             if (type === 'oldlogs') {
-                const pat   = "-name '*.gz' -o -name '*.1' -o -name '*.2' -o -name '*.3' -o -name '*.4'";
-                const list  = await this._cmdOut(s(`find /var/log -type f \\( ${pat} \\) | head -30`));
-                const bytes = await this._cmdOut(s(`find /var/log -type f \\( ${pat} \\) -printf '%s\\n' | awk '{s+=\$1}END{print s+0}'`));
-                const count = await this._cmdOut(s(`find /var/log -type f \\( ${pat} \\) | wc -l`));
-                return { preview: `${count.trim()} Dateien:\n${list.trim() || '(keine gefunden)'}`, bytes: parseInt(bytes) || 0, sizeHuman: this._fmtBytes(parseInt(bytes) || 0) };
+                const expr  = this._oldLogFindExpr();
+                const list  = await this._shellOut(`find /var/log ${expr} 2>/dev/null | head -30`);
+                const bytes = await this._shellOut(`find /var/log ${expr} -printf '%s\\n' 2>/dev/null | awk '{s+=$1}END{print s+0}'`);
+                const count = await this._shellOut(`find /var/log ${expr} 2>/dev/null | wc -l`);
+                const notDel = sudoStatus.ok ? 0 : parseInt(await this._shellOut(`find /var/log ${expr} ! -writable 2>/dev/null | wc -l`, false)) || 0;
+                return {
+                    preview: `${count.trim()} Dateien:\n${list.trim() || '(keine gefunden)'}`,
+                    bytes: parseInt(bytes) || 0,
+                    sizeHuman: this._fmtBytes(parseInt(bytes) || 0),
+                    notDeletable: notDel,
+                    ...sudoMeta,
+                };
             }
             if (type === 'tmp') {
                 const days  = parseInt(params.get('days') || '7', 10);
                 const mtime = days > 0 ? `-mtime +${days}` : '';
-                const list  = await this._cmdOut(`find /tmp /var/tmp -type f ${mtime} 2>/dev/null | head -30`);
-                const bytes = await this._cmdOut(`find /tmp /var/tmp -type f ${mtime} -printf '%s\\n' 2>/dev/null | awk '{s+=$1}END{print s+0}'`);
-                const count = await this._cmdOut(`find /tmp /var/tmp -type f ${mtime} 2>/dev/null | wc -l`);
-                return { preview: `${count.trim()} Dateien${days > 0 ? ' \u00e4lter als ' + days + ' Tage' : ''}:\n${list.trim() || '(keine)'}`, bytes: parseInt(bytes) || 0, sizeHuman: this._fmtBytes(parseInt(bytes) || 0) };
+                const list  = await this._shellOut(`find /tmp /var/tmp -type f ${mtime} 2>/dev/null | head -30`, sudoStatus.ok);
+                const bytes = await this._shellOut(`find /tmp /var/tmp -type f ${mtime} -printf '%s\\n' 2>/dev/null | awk '{s+=$1}END{print s+0}'`, sudoStatus.ok);
+                const count = await this._shellOut(`find /tmp /var/tmp -type f ${mtime} 2>/dev/null | wc -l`, sudoStatus.ok);
+                return { preview: `${count.trim()} Dateien${days > 0 ? ' \u00e4lter als ' + days + ' Tage' : ''}:\n${list.trim() || '(keine)'}`, bytes: parseInt(bytes) || 0, sizeHuman: this._fmtBytes(parseInt(bytes) || 0), ...sudoMeta };
             }
             if (type === 'npm') {
                 const dir   = await this._cmdOut('npm config get cache 2>/dev/null || echo ~/.npm');
                 const bytes = await this._cmdOut(`du -sb ${dir.trim()} 2>/dev/null | cut -f1 || echo 0`);
-                return { preview: `npm Cache: ${dir.trim()}\nGr\u00f6\u00dfe: ${this._fmtBytes(parseInt(bytes) || 0)}`, bytes: parseInt(bytes) || 0, sizeHuman: this._fmtBytes(parseInt(bytes) || 0) };
+                return { preview: `npm Cache: ${dir.trim()}\nGr\u00f6\u00dfe: ${this._fmtBytes(parseInt(bytes) || 0)}`, bytes: parseInt(bytes) || 0, sizeHuman: this._fmtBytes(parseInt(bytes) || 0), sudoOk: true };
             }
             if (type === 'custom-single') {
                 const p    = params.get('path') || '';
                 const days = parseInt(params.get('days') || '0', 10);
-                if (!p) return { preview: 'Kein Pfad angegeben', bytes: 0 };
+                if (!p) return { preview: 'Kein Pfad angegeben', bytes: 0, ...sudoMeta };
                 const mtime = days > 0 ? `-mtime +${days}` : '';
-                const list  = await this._cmdOut(`find ${p} -type f ${mtime} 2>/dev/null | head -20 || ls -lh ${p} 2>/dev/null | head -20`);
-                const bytes = await this._cmdOut(`find ${p} -type f ${mtime} -printf '%s\\n' 2>/dev/null | awk '{s+=$1}END{print s+0}'`);
-                return { preview: list.trim() || '(nichts gefunden)', bytes: parseInt(bytes) || 0, sizeHuman: this._fmtBytes(parseInt(bytes) || 0) };
+                const list  = await this._shellOut(`find ${p} -type f ${mtime} 2>/dev/null | head -20 || ls -lh ${p} 2>/dev/null | head -20`, sudoStatus.ok);
+                const bytes = await this._shellOut(`find ${p} -type f ${mtime} -printf '%s\\n' 2>/dev/null | awk '{s+=$1}END{print s+0}'`, sudoStatus.ok);
+                return { preview: list.trim() || '(nichts gefunden)', bytes: parseInt(bytes) || 0, sizeHuman: this._fmtBytes(parseInt(bytes) || 0), ...sudoMeta };
             }
             return { error: 'Unbekannter Typ: ' + type };
         } catch (e) { return { error: e.message }; }
@@ -2472,51 +2841,69 @@ class LinuxDashboard extends utils.Adapter {
 
     async _cleanRun(params) {
         const { type } = params;
-        // Prefix with sudo; -n = non-interactive (fail fast if no sudo rights)
-        const sudo = 'sudo -n';
         try {
-            let cmd = '';
+            let result;
             if (type === 'apt') {
-                cmd = `${sudo} apt-get clean 2>&1 && ${sudo} apt-get autoremove -y 2>&1 && echo "\u2714 APT-Cache geleert"`;
+                result = await this._privilegedShell('apt-get clean 2>&1 && apt-get autoremove -y 2>&1 && echo "✔ APT-Cache geleert"');
             } else if (type === 'journal') {
                 const mb   = parseInt(params.maxSizeMB || '500', 10);
                 const days = parseInt(params.maxDays   || '30',  10);
-                cmd = `${sudo} journalctl --vacuum-size=${mb}M 2>&1 && ${sudo} journalctl --vacuum-time=${days}d 2>&1`;
+                result = await this._privilegedShell(`journalctl --vacuum-size=${mb}M 2>&1 && journalctl --vacuum-time=${days}d 2>&1 && echo "✔ Journal bereinigt"`);
+            } else if (type === 'iobrokerlogs') {
+                result = await this._deleteMatchedFiles(this._iobrokerLogDir(), this._oldLogFindExpr());
             } else if (type === 'oldlogs') {
-                const pat = "-name '*.gz' -o -name '*.1' -o -name '*.2' -o -name '*.3' -o -name '*.4'";
-                cmd = `${sudo} find /var/log -type f \( ${pat} \) -delete 2>&1 && echo '\u2714 Alte Log-Dateien gel\u00f6scht'`;
+                result = await this._deleteMatchedFiles('/var/log', this._oldLogFindExpr());
             } else if (type === 'tmp') {
                 const days  = parseInt(params.days || '7', 10);
                 const mtime = days > 0 ? `-mtime +${days}` : '';
-                cmd = `${sudo} find /tmp /var/tmp -type f ${mtime} -delete 2>&1 && echo '\u2714 /tmp bereinigt'`;
+                result = await this._deleteMatchedFiles('/tmp /var/tmp', `-type f ${mtime}`);
             } else if (type === 'npm') {
-                cmd = 'npm cache clean --force 2>&1 && echo "\u2714 npm Cache geleert"';
+                const output = await this._cmdOut('npm cache clean --force 2>&1 && echo "✔ npm Cache geleert"');
+                result = { ok: true, output: output.trim(), warning: false };
             } else if (type === 'custom') {
                 const rules = JSON.parse(params.rules || '[]');
-                if (!rules.length) return { output: 'Keine Regeln definiert' };
-                const cmds = rules.map(r => {
+                const effective = rules.length ? rules : this._readCustomRules();
+                if (!effective.length) return { output: 'Keine Regeln definiert' };
+                const outputs = [];
+                let warning = false;
+                let sudoError = false;
+                for (const r of effective) {
+                    const safePath = String(r.path || '').replace(/["'`$\\]/g, '');
+                    if (!safePath) continue;
                     const mtime = r.days > 0 ? `-mtime +${r.days}` : '';
-                    return `echo "--- ${r.path} ---" && ${sudo} find ${r.path} -type f ${mtime} -delete 2>&1 || ${sudo} rm -f ${r.path} 2>&1`;
-                });
-                cmd = cmds.join(' && ');
+                    const sub = await this._privilegedShell([
+                        `echo "--- ${safePath} ---"`,
+                        `cnt_before=$(find ${safePath} -type f ${mtime} 2>/dev/null | wc -l)`,
+                        `find ${safePath} -type f ${mtime} -print0 2>/dev/null | xargs -0 -r rm -fv 2>/dev/null || rm -f ${safePath} 2>/dev/null || true`,
+                        `cnt_after=$(find ${safePath} -type f ${mtime} 2>/dev/null | wc -l)`,
+                        'echo "✔ $((cnt_before - cnt_after)) Dateien gelöscht"',
+                    ].join('; '));
+                    if (sub.sudoError) return { ok: false, error: sub.error };
+                    outputs.push(sub.output);
+                    if (sub.warning) warning = true;
+                }
+                result = { ok: true, output: outputs.join('\n'), warning };
             } else {
                 return { error: 'Unbekannter Typ' };
             }
+
+            if (result.sudoError) return { ok: false, error: result.error };
             this._addLog('INFO', `Bereinigung: ${type}`);
-            const result = await this._cmdOut(cmd, 120000);
-            if (result.includes('sudo: a password is required') || result.includes('sudo: command not found')) {
-                return { ok: false, error: 'Keine sudo-Rechte. Bitte sudoers einrichten:\necho "iobroker ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/iobroker' };
-            }
-            return { ok: true, output: result.trim() || '\u2714 Fertig (keine Ausgabe)' };
+            return { ok: result.ok, output: result.output || '\u2714 Fertig (keine Ausgabe)', warning: !!result.warning };
         } catch (e) { return { error: e.message }; }
     }
 
-    _cmdOut(cmd, timeout = 15000) {
-        return new Promise((resolve, reject) => {
+    _cmdExec(cmd, timeout = 15000) {
+        return new Promise(resolve => {
             exec(cmd, { timeout, maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
-                resolve((stdout || '') + (stderr || ''));
+                const out = ((stdout || '') + (stderr || '')).trim();
+                resolve({ stdout: (stdout || '').trim(), stderr: (stderr || '').trim(), output: out, exitCode: err ? (err.code ?? 1) : 0 });
             });
         });
+    }
+
+    _cmdOut(cmd, timeout = 15000) {
+        return this._cmdExec(cmd, timeout).then(r => r.output);
     }
 
     // ── Storage Analyzer ──────────────────────────────────────────────────────

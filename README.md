@@ -1,6 +1,6 @@
 # ioBroker Linux Dashboard Adapter
 
-[![Version](https://img.shields.io/badge/version-0.6.0-blue.svg)](https://github.com/MPunktBPunkt/iobroker.linuxdashboard)
+[![Version](https://img.shields.io/badge/version-0.7.0-blue.svg)](https://github.com/MPunktBPunkt/iobroker.linuxdashboard)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D16-brightgreen.svg)](https://nodejs.org)
 
@@ -85,6 +85,12 @@ Nach der Installation im ioBroker Admin unter **Adapter → Linux Dashboard** ko
 | Kommando-Ausführung        | ✅       | Terminal ein-/ausschalten                                           |
 | Befehls-Whitelist          | leer     | Kommagetrennte erlaubte Befehle (leer = alle erlaubt)               |
 | Ausführliches Logging      | ✅       | Debug-Einträge ins ioBroker-Log schreiben                           |
+| HTTP Basic Auth            | ❌       | Web-UI mit Benutzername/Passwort schützen                           |
+| Standard-Bereinigungsregeln| `[]`     | JSON-Regeln, die beim ersten Start übernommen werden               |
+
+### HTTP Basic Auth (empfohlen)
+
+Wenn das Dashboard im Netzwerk erreichbar ist, **HTTP Basic Auth aktivieren** und starke Zugangsdaten setzen. Ohne Auth kann jeder im Netzwerk Terminal, Dateimanager und Prozesse nutzen.
 
 ### Firewall (falls nötig)
 
@@ -133,6 +139,7 @@ System-Log-Viewer:
 | Zeilen          | 10 bis 5000 Zeilen                                        |
 | Filter          | Regulärer Ausdruck                                        |
 | Auto-Scroll     | Automatisch ans Ende scrollen                             |
+| Live            | Neue Zeilen per WebSocket alle 3 Sekunden                 |
 | Export          | Log als .txt Datei speichern                             |
 
 Farbkodierung: 🔴 Fehler · 🟡 Warnung · ⚪ Info · ⬜ Debug · 🔵 System
@@ -184,11 +191,17 @@ Damit funktionieren:
 | Dienste starten/stoppen       | ⚠️ Nur mit sudo-Rechten |
 | Pakete installieren           | ⚠️ Nur mit sudo-Rechten |
 
-Für privilegierte Befehle `/etc/sudoers` anpassen:
+Für privilegierte Befehle `/etc/sudoers` anpassen. Für die **Speicher-Bereinigung** (Logs, APT, Journal, /tmp) reicht eine eingeschränkte Regel:
 
+```bash
+# Als root – nur die für Bereinigung benötigten Befehle:
+echo 'iobroker ALL=(ALL) NOPASSWD: /usr/bin/find, /bin/rm, /usr/bin/journalctl, /usr/bin/apt-get, /usr/bin/apt, /usr/bin/du, /bin/ls, /bin/systemctl, /usr/bin/systemctl' | sudo tee /etc/sudoers.d/iobroker-cleanup
+sudo chmod 440 /etc/sudoers.d/iobroker-cleanup
 ```
-iobroker ALL=(ALL) NOPASSWD: /bin/systemctl
-```
+
+Für Dienste und Pakete ist systemctl/apt in der Regel oben bereits enthalten.
+
+> Im Web-UI zeigen Banner unter **Bereinigung**, **Services** und **Pakete**, ob passwordloses sudo aktiv ist.
 
 ---
 
@@ -209,6 +222,24 @@ iobroker restart linuxdashboard
 ---
 
 ## Changelog
+
+### 0.7.0 (2026-06-27)
+
+* HTTP Basic Auth als Adapter-Einstellung
+* ioBroker-Log-Bereinigung (`/opt/iobroker/log`) als eigene Regel
+* Benutzerdefinierte Bereinigungsregeln serverseitig gespeichert (mit localStorage-Migration)
+* sudo für systemctl und apt install/remove/update
+* sudo-Status-Banner auch bei Services und Paketen
+* Live-Log-Viewer per WebSocket
+* Speicher-Analyse: Dateien direkt zur Bereinigung hinzufügen
+* Responsive Layout für kleinere Bildschirme
+
+### 0.6.1 (2026-06-27)
+
+* Log-Bereinigung: erweiterte Muster (*.xz, *.zst, *.old, Rotation bis *.20)
+* sudo-Status-Banner in der Bereinigungs-Ansicht mit sudoers-Anleitung
+* Detaillierte Lösch-Berichte (Anzahl gelöscht / verbleibend / Fehlerdetails)
+* Vorschau warnt bei fehlenden sudo-Rechten oder nicht löschbaren Dateien
 
 ### 0.1.0 (2026-03-14)
 

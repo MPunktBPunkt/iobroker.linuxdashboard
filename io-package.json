@@ -1,7 +1,7 @@
 {
   "common": {
     "name": "linuxdashboard",
-    "version": "0.6.0",
+    "version": "0.7.0",
     "news": {
       "0.3.0": {
         "en": "Service manager, package manager, cron editor, file editor, process kill, disk analyzer, backup manager",
@@ -22,6 +22,14 @@
       "0.5.0": {
         "en": "Storage cleanup: APT cache, journal vacuum, old logs, /tmp, npm cache, custom rules",
         "de": "Speicherbereinigung: APT-Cache, Journal-Vacuum, alte Logs, /tmp, npm Cache, eigene Regeln"
+      },
+      "0.7.0": {
+        "en": "HTTP Basic Auth, ioBroker log cleanup, server-side custom rules, sudo for systemctl/apt, live log WebSocket",
+        "de": "HTTP Basic Auth, ioBroker-Log-Bereinigung, serverseitige Regeln, sudo für systemctl/apt, Live-Log per WebSocket"
+      },
+      "0.6.1": {
+        "en": "Improved log cleanup: broader rotation patterns, sudo status banner, detailed delete reporting",
+        "de": "Verbesserte Log-Bereinigung: mehr Rotationsmuster, sudo-Status-Anzeige, detaillierte Lösch-Berichte"
       },
       "0.6.0": {
         "en": "ioBroker adapter manager tab, terminal newest-on-top, apt update/upgrade buttons, sudo for all cleanup commands",
@@ -81,6 +89,10 @@
     "filemanagerRoot": "/",
     "allowCommandExecution": true,
     "commandWhitelist": "",
+    "httpAuthEnabled": false,
+    "httpAuthUser": "",
+    "httpAuthPassword": "",
+    "customCleanRules": "[]",
     "backupDir": "/tmp/iobroker-backups"
   },
   "objects": [],
